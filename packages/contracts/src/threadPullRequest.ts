@@ -36,6 +36,25 @@ export const ThreadPullRequestLinkSource = Schema.Literals([
 ]);
 export type ThreadPullRequestLinkSource = typeof ThreadPullRequestLinkSource.Type;
 
+export const ThreadPullRequestAiReviewState = Schema.Literals(["reviewing", "reviewed"]);
+export type ThreadPullRequestAiReviewState = typeof ThreadPullRequestAiReviewState.Type;
+
+export const ThreadPullRequestAiReviewer = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  state: ThreadPullRequestAiReviewState,
+});
+export type ThreadPullRequestAiReviewer = typeof ThreadPullRequestAiReviewer.Type;
+
+/**
+ * Review bots (CodeRabbit, Greptile, ...) seen on the pull request. `state` is "reviewing" while
+ * any of them is, so several reviewers read as one.
+ */
+export const ThreadPullRequestAiReview = Schema.Struct({
+  state: ThreadPullRequestAiReviewState,
+  reviewers: Schema.Array(ThreadPullRequestAiReviewer),
+});
+export type ThreadPullRequestAiReview = typeof ThreadPullRequestAiReview.Type;
+
 export const ThreadPullRequestSnapshot = Schema.Struct({
   state: PullRequestState,
   title: TrimmedNonEmptyString,
@@ -53,6 +72,8 @@ export const ThreadPullRequestSnapshot = Schema.Struct({
   reviewDecision: Schema.optional(Schema.NullOr(PullRequestReviewDecision)),
   checksState: Schema.optional(Schema.NullOr(PullRequestChecksState)),
   mergeability: Schema.optional(PullRequestMergeability),
+  /** Present only while the environment's AI review status setting is on. */
+  aiReview: Schema.optional(ThreadPullRequestAiReview),
 });
 export type ThreadPullRequestSnapshot = typeof ThreadPullRequestSnapshot.Type;
 

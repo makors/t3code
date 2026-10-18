@@ -1,6 +1,6 @@
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
-import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
+import { threadAiReview, threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
 import * as React from "react";
 import {
   isAtomCommandInterrupted,
@@ -576,10 +576,13 @@ export interface ThreadStatusPill {
     | "Pending Approval"
     | "Awaiting Input"
     | "Waiting"
-    | "Plan Ready";
+    | "Plan Ready"
+    | "Reviewing"
+    | "Reviewed";
   colorClass: string;
   dotClass: string;
   pulse: boolean;
+  tooltip?: string;
 }
 
 const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
@@ -589,7 +592,9 @@ const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
   Connecting: 3,
   Waiting: 2.5,
   "Plan Ready": 2,
+  Reviewing: 1.5,
   Completed: 1,
+  Reviewed: 0.5,
 };
 
 type ThreadStatusInput = Pick<
@@ -602,6 +607,7 @@ type ThreadStatusInput = Pick<
   | "latestRun"
   | "runtime"
 > & {
+  pullRequests?: SidebarThreadSummary["pullRequests"] | undefined;
   lastVisitedAt?: string | null | undefined;
   pendingBackgroundTasks?: SidebarThreadSummary["pendingBackgroundTasks"] | undefined;
 };
@@ -1147,6 +1153,18 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
+  // Present only while the environment's AI review status setting is on.
+  const aiReview = threadAiReview(thread.pullRequests ?? []);
+  if (aiReview?.state === "reviewing") {
+    return {
+      label: "Reviewing",
+      colorClass: "text-teal-600 dark:text-teal-300/90",
+      dotClass: "bg-teal-500 dark:bg-teal-300/90",
+      pulse: false,
+      tooltip: aiReviewTooltip(aiReview),
+    };
+  }
+
   if (hasUnseenCompletion(thread)) {
     return {
       label: "Completed",
@@ -1156,7 +1174,36 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
+  if (aiReview?.state === "reviewed") {
+    return {
+      label: "Reviewed",
+      colorClass: "text-teal-600 dark:text-teal-300/90",
+      dotClass: "bg-teal-500 dark:bg-teal-300/90",
+      pulse: false,
+      tooltip: aiReviewTooltip(aiReview),
+    };
+  }
+
   return null;
+}
+
+function aiReviewTooltip(review: NonNullable<ReturnType<typeof threadAiReview>>): string {
+  const names = (state: "reviewing" | "reviewed") => [
+    ...new Set(
+      review.reviewers
+        .filter((reviewer) => reviewer.state === state)
+        .map((reviewer) => reviewer.name),
+    ),
+  ];
+  const reviewing = names("reviewing");
+  // A bot re-reviewing after a push is listed once, as still at work.
+  const reviewed = names("reviewed").filter((name) => !reviewing.includes(name));
+  return [
+    reviewing.length > 0 ? `Reviewing: ${reviewing.join(", ")}` : null,
+    reviewed.length > 0 ? `Reviewed: ${reviewed.join(", ")}` : null,
+  ]
+    .filter((line) => line !== null)
+    .join(" · ");
 }
 
 export function resolveProjectStatusIndicator(

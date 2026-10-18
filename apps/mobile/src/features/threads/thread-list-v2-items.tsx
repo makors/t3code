@@ -20,6 +20,7 @@ import type {
 import type { EnvironmentThreadSearchMatch } from "@t3tools/client-runtime/state/thread-search";
 import { AuthOrchestrationOperateScope, type EnvironmentMachineKind } from "@t3tools/contracts";
 import { canSnooze, resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
+import { threadAiReview } from "@t3tools/shared/threadPullRequests";
 import type { MenuAction } from "@react-native-menu/menu";
 import { memo, useCallback, useEffect, useMemo, useState, type ComponentProps } from "react";
 import { Pressable, useWindowDimensions, View } from "react-native";
@@ -104,6 +105,18 @@ const STATUS_LABEL_BY_STATUS: Partial<Record<ThreadListV2Status, StatusLabel>> =
     className: "text-warning-foreground",
     iconTintClassName: "accent-warning-foreground",
   },
+};
+const REVIEWING_STATUS_LABEL: StatusLabel = {
+  label: "Reviewing",
+  icon: { ios: "eye", android: "visibility" },
+  className: "text-adaptive-violet-600-400",
+  iconTintClassName: "accent-adaptive-violet-600-400",
+};
+const REVIEWED_STATUS_LABEL: StatusLabel = {
+  label: "Reviewed",
+  icon: "text.bubble",
+  className: "text-adaptive-violet-600-400",
+  iconTintClassName: "accent-adaptive-violet-600-400",
 };
 const DONE_STATUS_LABEL: StatusLabel = {
   label: "Done",
@@ -583,10 +596,19 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const status = resolveThreadListV2Status(thread);
   const isUnread = status === "ready" && threadHasUnseenCompletion(thread);
   const workingLabel = STATUS_LABEL_BY_STATUS[status];
+  // Present only while the environment's AI review status setting is on.
+  const aiReview = threadAiReview(thread.pullRequests);
   const statusLabel =
     (status === "working" && workingLabel !== undefined && thread.goal?.status === "active"
       ? { ...workingLabel, label: "Goal" }
-      : workingLabel) ?? (isUnread ? DONE_STATUS_LABEL : undefined);
+      : workingLabel) ??
+    (aiReview?.state === "reviewing"
+      ? REVIEWING_STATUS_LABEL
+      : isUnread
+        ? DONE_STATUS_LABEL
+        : aiReview?.state === "reviewed"
+          ? REVIEWED_STATUS_LABEL
+          : undefined);
   const recede = shouldRecedeThreadRow({ status, selected });
   const timeLabel = props.timeLabel;
 

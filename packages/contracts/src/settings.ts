@@ -788,6 +788,10 @@ export const SourceControlWritingStyleSettings = Schema.Struct({
 });
 export type SourceControlWritingStyleSettings = typeof SourceControlWritingStyleSettings.Type;
 
+const PullRequestAiReviewers = Schema.Array(
+  TrimmedNonEmptyString.check(Schema.isMaxLength(100)),
+).check(Schema.isMaxLength(20));
+
 export const BranchNamingMode = Schema.Literals(["static", "semantic", "custom"]);
 export type BranchNamingMode = typeof BranchNamingMode.Type;
 
@@ -1112,6 +1116,12 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(false)),
   ),
   sidebarAutoSettleOnMerge: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  /** Off by default: it adds a checks and comments read per open pull request with news. */
+  pullRequestAiReviewStatus: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** Logins or check names of review bots beyond the built-in list, such as an in-house one. */
+  pullRequestAiReviewers: PullRequestAiReviewers.pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
   backgroundActivity: BackgroundActivitySettings,
 
   automaticGitFetchInterval: Schema.DurationFromMillis.pipe(
@@ -1413,6 +1423,8 @@ export const ServerSettingsPatch = Schema.Struct({
   sidebarAutoSettleAfterDays: Schema.optionalKey(Schema.NullOr(SidebarAutoSettleAfterDays)),
   sidebarAutoSettleKeepPullRequests: Schema.optionalKey(Schema.Boolean),
   sidebarAutoSettleOnMerge: Schema.optionalKey(Schema.Boolean),
+  pullRequestAiReviewStatus: Schema.optionalKey(Schema.Boolean),
+  pullRequestAiReviewers: Schema.optionalKey(PullRequestAiReviewers),
   autoResumeLimitedThreads: Schema.optionalKey(Schema.Boolean),
   snoozeLimitedThreads: Schema.optionalKey(Schema.Boolean),
   backgroundActivity: Schema.optionalKey(

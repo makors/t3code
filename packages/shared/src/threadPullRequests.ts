@@ -3,6 +3,7 @@ import type {
   RepositoryIdentity,
   SourceControlProviderKind,
   ThreadLinkedPullRequest,
+  ThreadPullRequestAiReview,
   ThreadPullRequestKey,
   ThreadPullRequestLink,
 } from "@t3tools/contracts";
@@ -410,4 +411,24 @@ export function pullRequestListLines(
           : null,
     }));
   });
+}
+
+/**
+ * AI review status across a thread's open pull requests: reviewing while any reviewer on any of
+ * them is, so a thread with several pull requests reads as one.
+ */
+export function threadAiReview(
+  links: ReadonlyArray<ThreadPullRequestLink>,
+): ThreadPullRequestAiReview | null {
+  const reviews = visibleThreadPullRequests(links).flatMap((link) =>
+    link.snapshot?.state === "open" && link.snapshot.aiReview !== undefined
+      ? [link.snapshot.aiReview]
+      : [],
+  );
+  if (reviews.length === 0) return null;
+  const reviewers = reviews.flatMap((review) => review.reviewers);
+  return {
+    state: reviews.some((review) => review.state === "reviewing") ? "reviewing" : "reviewed",
+    reviewers,
+  };
 }

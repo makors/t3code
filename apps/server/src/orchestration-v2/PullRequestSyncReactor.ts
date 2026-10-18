@@ -1,8 +1,10 @@
 import { siblingPullRequestUrl } from "@t3tools/shared/changeRequestUrl";
 import {
   CommandId,
+  type PullRequestRef,
   type PullRequestSummary,
   type ThreadId,
+  type ThreadPullRequestAiReview,
   type ThreadPullRequestKey,
   type ThreadPullRequestLink,
   type ThreadPullRequestSnapshot,
@@ -32,11 +34,20 @@ import * as GitManager from "../git/GitManager.ts";
 import { PullRequestProviderError } from "@t3tools/source-control-core/server/PullRequestProvider";
 import * as PullRequestService from "../pullRequest/PullRequestService.ts";
 import { forkParked } from "../serverActivation.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import { isTerminalRunStatus } from "./ThreadManagementService.ts";
+import { aiReviewsEqual, resolveAiReview } from "./pullRequestAiReview.ts";
 
 const SLOW_SYNC_INTERVAL_MS = 15 * 60 * 1_000;
+/**
+ * AI review status costs two host reads, so it is read again only when the summary moves, every
+ * few minutes while a reviewer is still at work (a bot finishing does not always move it), or
+ * after a long quiet spell for news the summary cannot show, such as an edited comment.
+ */
+const AI_REVIEW_REVIEWING_REREAD_MS = 2 * 60_000;
+const AI_REVIEW_QUIET_REREAD_MS = 10 * 60_000;
 const PULL_REQUEST_CLOSE_COMMAND = /\b(?:gh\s+pr|glab\s+mr)\s+(?:merge|close)\b/u;
 
 const isPullRequestProviderError = Schema.is(PullRequestProviderError);
@@ -85,7 +96,8 @@ function snapshotFieldsEqual(left: SnapshotFields, right: SnapshotFields): boole
     left.changedFiles === right.changedFiles &&
     (left.reviewDecision ?? null) === (right.reviewDecision ?? null) &&
     (left.checksState ?? null) === (right.checksState ?? null) &&
-    left.mergeability === right.mergeability
+    left.mergeability === right.mergeability &&
+    aiReviewsEqual(left.aiReview, right.aiReview)
   );
 }
 
@@ -150,6 +162,7 @@ export const make = Effect.gen(function* () {
   const pullRequests = yield* PullRequestService.PullRequestService;
   const git = yield* GitManager.GitManager;
   const crypto = yield* Crypto.Crypto;
+  const settingsService = yield* ServerSettings.ServerSettingsService;
 
   const lastSyncedAt = new Map<string, number>();
   const requested = new Map<string, number>();
@@ -162,6 +175,63 @@ export const make = Effect.gen(function* () {
   // A paused host refuses every read without asking it, so the sweep leaves its pull requests
   // due until the pause ends rather than failing each of them every minute.
   const pausedUntil = new Map<string, number>();
+  const aiReviewReads = new Map<
+    string,
+    {
+      readonly at: number;
+      readonly fingerprint: string;
+      readonly review: ThreadPullRequestAiReview | undefined;
+    }
+  >();
+
+  const readAiReview = Effect.fn("PullRequestSyncReactor.readAiReview")(function* (
+    key: string,
+    ref: PullRequestRef,
+    summary: PullRequestSummary,
+    previous: ThreadPullRequestAiReview | undefined,
+    customReviewers: ReadonlyArray<string>,
+    nowMs: number,
+  ) {
+    const fingerprint = [summary.updatedAt, summary.checksState, ...customReviewers].join("\n");
+    const last = aiReviewReads.get(key);
+    const fresh =
+      last !== undefined &&
+      last.fingerprint === fingerprint &&
+      nowMs - last.at <
+        (last.review?.state === "reviewing"
+          ? AI_REVIEW_REVIEWING_REREAD_MS
+          : AI_REVIEW_QUIET_REREAD_MS);
+    if (fresh) return last.review;
+    return yield* Effect.all(
+      [pullRequests.detail({ ...ref, allowStale: false }), pullRequests.activity(ref)],
+      { concurrency: 2 },
+    ).pipe(
+      Effect.map(([detail, activity]) =>
+        resolveAiReview({
+          checks: detail.checks,
+          requestedReviewers: detail.reviewers,
+          comments: [
+            ...activity.comments,
+            ...activity.reviewThreads.flatMap((thread) => thread.comments),
+          ],
+          customReviewers,
+          now: nowMs,
+        }),
+      ),
+      Effect.tap((review) =>
+        Effect.sync(() => aiReviewReads.set(key, { at: nowMs, fingerprint, review })),
+      ),
+      // A failed read keeps what the thread last showed rather than dropping the status.
+      Effect.catchCauseIf(
+        (cause) => !Cause.hasInterruptsOnly(cause) && rateLimitRetryAt(cause) === undefined,
+        (cause) =>
+          Effect.logDebug("pull request AI review read failed", {
+            key,
+            reason: skipReason(cause),
+          }).pipe(Effect.as(previous)),
+      ),
+    );
+  });
 
   const isDue = (key: string, entries: ReadonlyArray<LinkEntry>, nowMs: number): boolean => {
     if (requested.has(key) || retryStacks.has(key)) return true;
@@ -180,6 +250,9 @@ export const make = Effect.gen(function* () {
 
   const sweep = Effect.fn("PullRequestSyncReactor.sweep")(function* (scope: "all" | "requested") {
     const threads = yield* projections.getThreadsWithPullRequests();
+    const settings = yield* settingsService.getSettings.pipe(
+      Effect.catchCause(() => Effect.succeed(null)),
+    );
     const now = yield* DateTime.now;
     const nowMs = DateTime.toEpochMillis(now);
     const nowIso = DateTime.formatIso(now);
@@ -197,6 +270,7 @@ export const make = Effect.gen(function* () {
     for (const key of lastSyncedAt.keys()) if (!groups.has(key)) lastSyncedAt.delete(key);
     for (const key of retryStacks) if (!groups.has(key)) retryStacks.delete(key);
     for (const key of requested.keys()) if (!groups.has(key)) requested.delete(key);
+    for (const key of aiReviewReads.keys()) if (!groups.has(key)) aiReviewReads.delete(key);
 
     const linkedThisSweep = new Set<string>();
     const persistence = yield* Semaphore.make(1);
@@ -273,14 +347,14 @@ export const make = Effect.gen(function* () {
       const generation = requested.get(key);
       if (generation !== undefined) yield* pullRequests.invalidate({ reference: ref });
       const summary = yield* pullRequests.summary(ref, { recoverTransientFailure: false });
-      const fields = snapshotFieldsOf(summary);
+      const summaryFields = snapshotFieldsOf(summary);
       const needsStack =
         generation !== undefined ||
         retryStacks.has(key) ||
         entries.some(
           (entry) =>
             entry.link.snapshot === null ||
-            !snapshotFieldsEqual(entry.link.snapshot, fields) ||
+            !snapshotFieldsEqual({ ...entry.link.snapshot, aiReview: undefined }, summaryFields) ||
             (summary.stack !== undefined &&
               (entry.link.stack?.number ?? null) !== (summary.stack?.number ?? null)),
         );
@@ -313,6 +387,21 @@ export const make = Effect.gen(function* () {
         }
         retryStacks.delete(key);
       }
+      const readsAiReview =
+        settings?.pullRequestAiReviewStatus === true && summary.state === "open";
+      if (!readsAiReview) aiReviewReads.delete(key);
+      const aiReview = readsAiReview
+        ? yield* readAiReview(
+            key,
+            ref,
+            summary,
+            first.link.snapshot?.aiReview,
+            settings.pullRequestAiReviewers,
+            nowMs,
+          )
+        : undefined;
+      const fields: SnapshotFields =
+        aiReview === undefined ? summaryFields : { ...summaryFields, aiReview };
       // The host answered, so the cadence clock ticks even if a dispatch below is rejected.
       lastSyncedAt.set(key, nowMs);
       // A refresh requested while the host read was in flight belongs to the next sweep.
