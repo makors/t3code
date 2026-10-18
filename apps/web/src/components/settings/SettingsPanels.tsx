@@ -2333,7 +2333,7 @@ export function GeneralSettingsPanel() {
             <SettingsRow
               serverScoped
               {...searchableSetting("ai-review-status")}
-              description="Mark threads Reviewing while bots like CodeRabbit or Greptile review their pull request, then Reviewed once every one has finished."
+              description="Show when bots like CodeRabbit or Greptile are reviewing a thread's pull request, and what they found once they finish."
               settingKeys={["pullRequestAiReviewStatus"]}
               control={
                 <ScopedSwitch
