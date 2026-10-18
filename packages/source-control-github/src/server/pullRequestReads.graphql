@@ -530,3 +530,117 @@ query PullRequestSourceBranch($repositoryId: ID!, $ref: String!) {
     }
   }
 }
+
+# What tells a review bot's progress apart, in one read: the head commit's checks with the app or
+# account behind each (a name alone can be posted by anyone), pending review requests, the commit
+# each review covered, unresolved threads, reactions on the description, and recent comments for
+# the bots that report progress only by editing one.
+query PullRequestReviewBots($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      headRefOid
+      commits(last: 1) {
+        nodes {
+          commit {
+            statusCheckRollup {
+              contexts(first: 100) {
+                nodes {
+                  __typename
+                  ... on CheckRun {
+                    name
+                    title
+                    status
+                    conclusion
+                    startedAt
+                    completedAt
+                    checkSuite {
+                      app {
+                        slug
+                        logoUrl(size: 64)
+                      }
+                    }
+                  }
+                  ... on StatusContext {
+                    context
+                    state
+                    description
+                    createdAt
+                    creator {
+                      login
+                      avatarUrl(size: 64)
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      reviewRequests(first: 50) {
+        nodes {
+          requestedReviewer {
+            __typename
+            ... on Bot {
+              login
+              avatarUrl(size: 64)
+            }
+            ... on User {
+              login
+              avatarUrl(size: 64)
+            }
+          }
+        }
+      }
+      reviews(last: 50) {
+        nodes {
+          state
+          submittedAt
+          commit {
+            oid
+          }
+          author {
+            login
+            avatarUrl(size: 64)
+          }
+        }
+      }
+      reviewThreads(last: 100) {
+        nodes {
+          isResolved
+          isOutdated
+          comments(first: 1) {
+            nodes {
+              author {
+                login
+              }
+            }
+          }
+        }
+      }
+      reactionGroups {
+        content
+        reactors(first: 20) {
+          nodes {
+            ... on Bot {
+              login
+            }
+            ... on User {
+              login
+            }
+          }
+        }
+      }
+      comments(last: 30) {
+        nodes {
+          body
+          createdAt
+          lastEditedAt
+          author {
+            login
+            avatarUrl(size: 64)
+          }
+        }
+      }
+    }
+  }
+}

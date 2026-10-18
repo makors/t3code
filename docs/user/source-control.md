@@ -291,13 +291,16 @@ A watched thread counts as working between wakes, so it stays in the **Working**
 not auto-settle. Agents stop watching when they hand the work back to you, and the thread then
 returns to your inbox.
 
-Turn on **Settings → General → Organization → AI review status** to mark a thread **Reviewing**
-while review bots such as CodeRabbit, Greptile, Copilot, or Cursor Bugbot review its open pull
-request, and **Reviewed** once every one of them has finished. T3 Code recognizes a bot by its check
-on the latest commit, a pending review request, or its latest comment, whichever the bot provides.
-With several bots, the thread stays **Reviewing** until the last one finishes. Add any other bot's
-login or check name under **Additional AI reviewers**. On mobile, the switch is under **Settings →
-Thread behavior**. The status costs extra host reads per open pull request, so it is off by default.
+Turn on **Settings → General → Organization → AI review status** to see review bots such as
+CodeRabbit, Greptile, Copilot, Cursor Bugbot, Claude, Codex, or Macroscope in the thread list. While
+any of them is reviewing an open pull request, the thread shows **Reviewing** with the bots still at
+work. When the last one finishes, the thread shows how many unresolved comments they left, or **No
+issues**, until you next open it. Hover a thread to see each bot's result. T3 Code follows each bot
+the way it reports progress: its check on the latest commit, a pending review request, its review,
+or the progress comment some bots keep. Gemini and Graphite show up only once they have reviewed,
+and Ellipsis only when it finds something. Add any other bot's login or check name under
+**Additional AI reviewers**. On mobile, the switch is under **Settings → Thread behavior**. This is
+GitHub only, and it costs one extra request per open pull request with news, so it is off by default.
 
 Cross-repository links use a project on the same host. Azure DevOps reviews require a project checked
 out from the matching organization and repository.

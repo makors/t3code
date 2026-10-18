@@ -42,9 +42,10 @@ import { aiReviewsEqual, resolveAiReview } from "./pullRequestAiReview.ts";
 
 const SLOW_SYNC_INTERVAL_MS = 15 * 60 * 1_000;
 /**
- * AI review status costs two host reads, so it is read again only when the summary moves, every
- * few minutes while a reviewer is still at work (a bot finishing does not always move it), or
- * after a long quiet spell for news the summary cannot show, such as an edited comment.
+ * AI review status costs a host read per pull request, so it is read again only when the summary
+ * moves, every few minutes while a reviewer is still at work (a bot finishing does not always
+ * move it), or after a long quiet spell for news the summary cannot show, such as an edited
+ * comment.
  */
 const AI_REVIEW_REVIEWING_REREAD_MS = 2 * 60_000;
 const AI_REVIEW_QUIET_REREAD_MS = 10 * 60_000;
@@ -202,21 +203,9 @@ export const make = Effect.gen(function* () {
           ? AI_REVIEW_REVIEWING_REREAD_MS
           : AI_REVIEW_QUIET_REREAD_MS);
     if (fresh) return last.review;
-    return yield* Effect.all(
-      [pullRequests.detail({ ...ref, allowStale: false }), pullRequests.activity(ref)],
-      { concurrency: 2 },
-    ).pipe(
-      Effect.map(([detail, activity]) =>
-        resolveAiReview({
-          checks: detail.checks,
-          requestedReviewers: detail.reviewers,
-          comments: [
-            ...activity.comments,
-            ...activity.reviewThreads.flatMap((thread) => thread.comments),
-          ],
-          customReviewers,
-          now: nowMs,
-        }),
+    return yield* pullRequests.reviewSignals(ref).pipe(
+      Effect.map((signals) =>
+        signals === null ? undefined : resolveAiReview({ signals, customReviewers, now: nowMs }),
       ),
       Effect.tap((review) =>
         Effect.sync(() => aiReviewReads.set(key, { at: nowMs, fingerprint, review })),

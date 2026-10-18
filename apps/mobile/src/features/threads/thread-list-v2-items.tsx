@@ -18,12 +18,17 @@ import type {
   EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentThreadSearchMatch } from "@t3tools/client-runtime/state/thread-search";
-import { AuthOrchestrationOperateScope, type EnvironmentMachineKind } from "@t3tools/contracts";
+import {
+  AuthOrchestrationOperateScope,
+  type EnvironmentMachineKind,
+  type ThreadPullRequestAiReview,
+} from "@t3tools/contracts";
 import { canSnooze, resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
-import { threadAiReview } from "@t3tools/shared/threadPullRequests";
+import { distinctAiReviewers, threadAiReviewStatus } from "@t3tools/shared/threadPullRequests";
+import { Image } from "expo-image";
 import type { MenuAction } from "@react-native-menu/menu";
 import { memo, useCallback, useEffect, useMemo, useState, type ComponentProps } from "react";
-import { Pressable, useWindowDimensions, View } from "react-native";
+import { Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 
 import type { ThreadListProvider } from "../../state/thread-list-environments";
@@ -106,18 +111,54 @@ const STATUS_LABEL_BY_STATUS: Partial<Record<ThreadListV2Status, StatusLabel>> =
     iconTintClassName: "accent-warning-foreground",
   },
 };
+// Waiting on review bots is not the user's turn, so it reads like Waiting.
 const REVIEWING_STATUS_LABEL: StatusLabel = {
   label: "Reviewing",
-  icon: { ios: "eye", android: "visibility" },
-  className: "text-adaptive-violet-600-400",
-  iconTintClassName: "accent-adaptive-violet-600-400",
+  icon: "circle.dashed.inset.filled",
+  className: "text-foreground-muted",
+  iconTintClassName: "accent-foreground-muted",
 };
-const REVIEWED_STATUS_LABEL: StatusLabel = {
-  label: "Reviewed",
-  icon: "text.bubble",
-  className: "text-adaptive-violet-600-400",
-  iconTintClassName: "accent-adaptive-violet-600-400",
-};
+
+function reviewedStatusLabel(findings: number): StatusLabel {
+  return findings === 0
+    ? { ...DONE_STATUS_LABEL, label: "No issues" }
+    : {
+        label: `${findings} ${findings === 1 ? "comment" : "comments"}`,
+        icon: "text.bubble",
+        className: "text-warning-foreground",
+        iconTintClassName: "accent-warning-foreground",
+      };
+}
+
+/** While bots review, the row shows the ones still at work; afterwards, every bot that reviewed. */
+function ReviewBotAvatars(props: { readonly review: ThreadPullRequestAiReview }) {
+  const reviewers = distinctAiReviewers(props.review).filter(
+    (reviewer) => props.review.state === "reviewed" || reviewer.state === "reviewing",
+  );
+  return (
+    <View className="flex-row gap-0.5">
+      {reviewers.slice(0, 3).map((reviewer) => (
+        <View
+          key={reviewer.name}
+          className="size-3.5 items-center justify-center overflow-hidden rounded-[4px] border-border bg-subtle"
+          style={{ borderWidth: StyleSheet.hairlineWidth }}
+        >
+          {reviewer.avatarUrl === null ? (
+            <Text className="text-[8px] font-t3-bold text-foreground-muted">
+              {reviewer.name.slice(0, 1)}
+            </Text>
+          ) : (
+            <Image
+              source={{ uri: reviewer.avatarUrl }}
+              cachePolicy="memory-disk"
+              style={{ width: 14, height: 14 }}
+            />
+          )}
+        </View>
+      ))}
+    </View>
+  );
+}
 const DONE_STATUS_LABEL: StatusLabel = {
   label: "Done",
   icon: "checkmark.circle",
@@ -597,18 +638,20 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const isUnread = status === "ready" && threadHasUnseenCompletion(thread);
   const workingLabel = STATUS_LABEL_BY_STATUS[status];
   // Present only while the environment's AI review status setting is on.
-  const aiReview = threadAiReview(thread.pullRequests);
+  const aiReview = threadAiReviewStatus(thread.pullRequests, thread.lastVisitedAt);
+  const reviewLabel =
+    aiReview === null
+      ? undefined
+      : aiReview.kind === "reviewing"
+        ? REVIEWING_STATUS_LABEL
+        : reviewedStatusLabel(aiReview.findings);
   const statusLabel =
     (status === "working" && workingLabel !== undefined && thread.goal?.status === "active"
       ? { ...workingLabel, label: "Goal" }
       : workingLabel) ??
-    (aiReview?.state === "reviewing"
-      ? REVIEWING_STATUS_LABEL
-      : isUnread
-        ? DONE_STATUS_LABEL
-        : aiReview?.state === "reviewed"
-          ? REVIEWED_STATUS_LABEL
-          : undefined);
+    reviewLabel ??
+    (isUnread ? DONE_STATUS_LABEL : undefined);
+  const showsReviewBots = aiReview !== null && statusLabel === reviewLabel;
   const recede = shouldRecedeThreadRow({ status, selected });
   const timeLabel = props.timeLabel;
 
@@ -968,15 +1011,21 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         ) : null}
         {statusLabel ? (
           <View className="flex-row items-center gap-1">
-            <SymbolView
-              name={statusLabel.icon}
-              size={13}
-              tintColorClassName={
-                selected ? selectedThreadRowColors.iconTintClassName : statusLabel.iconTintClassName
-              }
-              type="monochrome"
-              weight="semibold"
-            />
+            {showsReviewBots ? (
+              <ReviewBotAvatars review={aiReview.review} />
+            ) : (
+              <SymbolView
+                name={statusLabel.icon}
+                size={13}
+                tintColorClassName={
+                  selected
+                    ? selectedThreadRowColors.iconTintClassName
+                    : statusLabel.iconTintClassName
+                }
+                type="monochrome"
+                weight="semibold"
+              />
+            )}
             <Text
               className={cn(
                 "text-xs font-t3-bold",

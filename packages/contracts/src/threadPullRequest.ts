@@ -41,7 +41,13 @@ export type ThreadPullRequestAiReviewState = typeof ThreadPullRequestAiReviewSta
 
 export const ThreadPullRequestAiReviewer = Schema.Struct({
   name: TrimmedNonEmptyString,
+  avatarUrl: Schema.NullOr(TrimmedNonEmptyString),
   state: ThreadPullRequestAiReviewState,
+  /** Host times; null where the bot's signal carries none, such as a review request. */
+  startedAt: Schema.NullOr(IsoDateTime),
+  completedAt: Schema.NullOr(IsoDateTime),
+  /** Unresolved threads the bot opened that still apply to the diff. */
+  findings: NonNegativeInt,
 });
 export type ThreadPullRequestAiReviewer = typeof ThreadPullRequestAiReviewer.Type;
 
@@ -52,6 +58,10 @@ export type ThreadPullRequestAiReviewer = typeof ThreadPullRequestAiReviewer.Typ
 export const ThreadPullRequestAiReview = Schema.Struct({
   state: ThreadPullRequestAiReviewState,
   reviewers: Schema.Array(ThreadPullRequestAiReviewer),
+  /** The earliest start among reviewers still at work. */
+  startedAt: Schema.NullOr(IsoDateTime),
+  /** When the last reviewer finished; null while any is still reviewing. */
+  completedAt: Schema.NullOr(IsoDateTime),
 });
 export type ThreadPullRequestAiReview = typeof ThreadPullRequestAiReview.Type;
 

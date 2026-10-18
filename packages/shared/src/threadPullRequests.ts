@@ -426,9 +426,64 @@ export function threadAiReview(
       : [],
   );
   if (reviews.length === 0) return null;
-  const reviewers = reviews.flatMap((review) => review.reviewers);
+  const reviewing = reviews.filter((review) => review.state === "reviewing");
+  const times = (values: ReadonlyArray<string | null>) =>
+    values.filter((value) => value !== null).sort();
   return {
-    state: reviews.some((review) => review.state === "reviewing") ? "reviewing" : "reviewed",
-    reviewers,
+    state: reviewing.length > 0 ? "reviewing" : "reviewed",
+    reviewers: reviews.flatMap((review) => review.reviewers),
+    startedAt: times(reviewing.map((review) => review.startedAt))[0] ?? null,
+    completedAt:
+      reviewing.length > 0
+        ? null
+        : (times(reviews.map((review) => review.completedAt)).at(-1) ?? null),
   };
+}
+
+export type ThreadAiReviewStatus =
+  | { readonly kind: "reviewing"; readonly review: ThreadPullRequestAiReview }
+  | {
+      readonly kind: "reviewed";
+      readonly review: ThreadPullRequestAiReview;
+      readonly findings: number;
+    };
+
+/**
+ * What a thread row says about its review bots. A finished review is news until the thread is
+ * visited after it, like a finished run, so it does not sit on every reviewed thread for good.
+ * `lastVisitedAt` is undefined on servers that do not track visits; the review then stays news.
+ */
+export function threadAiReviewStatus(
+  links: ReadonlyArray<ThreadPullRequestLink>,
+  lastVisitedAt: string | null | undefined,
+): ThreadAiReviewStatus | null {
+  const review = threadAiReview(links);
+  if (review === null) return null;
+  if (review.state === "reviewing") return { kind: "reviewing", review };
+  if (review.completedAt === null) return null;
+  if (lastVisitedAt != null && Date.parse(lastVisitedAt) >= Date.parse(review.completedAt)) {
+    return null;
+  }
+  const findings = review.reviewers.reduce((sum, reviewer) => sum + reviewer.findings, 0);
+  return { kind: "reviewed", review, findings };
+}
+
+/** One entry per bot, preferring the one still at work when a bot reviews several pull requests. */
+export function distinctAiReviewers(
+  review: ThreadPullRequestAiReview,
+): ReadonlyArray<ThreadPullRequestAiReview["reviewers"][number]> {
+  const byName = new Map<string, ThreadPullRequestAiReview["reviewers"][number]>();
+  for (const reviewer of review.reviewers) {
+    const seen = byName.get(reviewer.name);
+    byName.set(
+      reviewer.name,
+      seen === undefined
+        ? reviewer
+        : {
+            ...(seen.state === "reviewing" ? seen : reviewer),
+            findings: seen.findings + reviewer.findings,
+          },
+    );
+  }
+  return [...byName.values()];
 }

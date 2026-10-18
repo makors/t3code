@@ -1,6 +1,10 @@
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
-import { threadAiReview, threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
+import {
+  distinctAiReviewers,
+  threadAiReviewStatus,
+  threadPullRequestSearchTerms,
+} from "@t3tools/shared/threadPullRequests";
 import * as React from "react";
 import {
   isAtomCommandInterrupted,
@@ -8,7 +12,12 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { defaultAnimateLayoutChanges, type AnimateLayoutChanges } from "@dnd-kit/sortable";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
-import type { ContextMenuItem, EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type {
+  ContextMenuItem,
+  EnvironmentId,
+  ThreadId,
+  ThreadPullRequestAiReview,
+} from "@t3tools/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
 import type { AsyncResult } from "effect/reactivity";
 import { planPinnedReorder } from "@t3tools/client-runtime/state/thread-sort";
@@ -593,8 +602,8 @@ const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
   Waiting: 2.5,
   "Plan Ready": 2,
   Reviewing: 1.5,
+  Reviewed: 1.2,
   Completed: 1,
-  Reviewed: 0.5,
 };
 
 type ThreadStatusInput = Pick<
@@ -1154,15 +1163,32 @@ export function resolveThreadStatusPill(input: {
   }
 
   // Present only while the environment's AI review status setting is on.
-  const aiReview = threadAiReview(thread.pullRequests ?? []);
-  if (aiReview?.state === "reviewing") {
+  const aiReview = threadAiReviewStatus(thread.pullRequests ?? [], thread.lastVisitedAt);
+  if (aiReview?.kind === "reviewing") {
     return {
       label: "Reviewing",
-      colorClass: "text-teal-600 dark:text-teal-300/90",
-      dotClass: "bg-teal-500 dark:bg-teal-300/90",
+      colorClass: "text-muted-foreground",
+      dotClass: "bg-muted-foreground",
       pulse: false,
-      tooltip: aiReviewTooltip(aiReview),
+      tooltip: aiReviewTooltip(aiReview.review),
     };
+  }
+  if (aiReview?.kind === "reviewed") {
+    return aiReview.findings > 0
+      ? {
+          label: "Reviewed",
+          colorClass: "text-amber-600 dark:text-amber-300/90",
+          dotClass: "bg-amber-500 dark:bg-amber-300/90",
+          pulse: false,
+          tooltip: aiReviewTooltip(aiReview.review),
+        }
+      : {
+          label: "Reviewed",
+          colorClass: "text-emerald-600 dark:text-emerald-300/90",
+          dotClass: "bg-emerald-500 dark:bg-emerald-300/90",
+          pulse: false,
+          tooltip: aiReviewTooltip(aiReview.review),
+        };
   }
 
   if (hasUnseenCompletion(thread)) {
@@ -1174,35 +1200,21 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  if (aiReview?.state === "reviewed") {
-    return {
-      label: "Reviewed",
-      colorClass: "text-teal-600 dark:text-teal-300/90",
-      dotClass: "bg-teal-500 dark:bg-teal-300/90",
-      pulse: false,
-      tooltip: aiReviewTooltip(aiReview),
-    };
-  }
-
   return null;
 }
 
-function aiReviewTooltip(review: NonNullable<ReturnType<typeof threadAiReview>>): string {
-  const names = (state: "reviewing" | "reviewed") => [
-    ...new Set(
-      review.reviewers
-        .filter((reviewer) => reviewer.state === state)
-        .map((reviewer) => reviewer.name),
-    ),
-  ];
-  const reviewing = names("reviewing");
-  // A bot re-reviewing after a push is listed once, as still at work.
-  const reviewed = names("reviewed").filter((name) => !reviewing.includes(name));
-  return [
-    reviewing.length > 0 ? `Reviewing: ${reviewing.join(", ")}` : null,
-    reviewed.length > 0 ? `Reviewed: ${reviewed.join(", ")}` : null,
-  ]
-    .filter((line) => line !== null)
+function aiReviewTooltip(review: ThreadPullRequestAiReview): string {
+  return distinctAiReviewers(review)
+    .map(
+      (reviewer) =>
+        `${reviewer.name}: ${
+          reviewer.state === "reviewing"
+            ? "reviewing"
+            : reviewer.findings === 0
+              ? "no issues"
+              : `${reviewer.findings} ${reviewer.findings === 1 ? "comment" : "comments"}`
+        }`,
+    )
     .join(" · ");
 }
 

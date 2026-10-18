@@ -339,6 +339,11 @@ export const make = Effect.gen(function* () {
         .getPullRequestWatchFingerprint(input)
         .pipe(Effect.mapError(fail("getChangeRequestWatchFingerprint"))),
 
+    getChangeRequestReviewSignals: (input) =>
+      cli
+        .getPullRequestReviewSignals(input)
+        .pipe(Effect.mapError(fail("getChangeRequestReviewSignals"))),
+
     getChangeRequestPreview: (input) =>
       cli.getPullRequestPreview(input).pipe(Effect.mapError(fail("getChangeRequestPreview"))),
 

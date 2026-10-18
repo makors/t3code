@@ -1257,10 +1257,28 @@ describe("resolveThreadStatusPill", () => {
     ).toMatchObject({ label: "Pending Approval", pulse: false });
   });
 
-  it("shows AI review status for a thread's open pull requests", () => {
+  it("shows AI review status, and a finished review only until the thread is visited", () => {
+    type Review = NonNullable<NonNullable<ThreadPullRequestLink["snapshot"]>["aiReview"]>;
+    const bot = (name: string, state: "reviewing" | "reviewed", findings = 0) => ({
+      name,
+      avatarUrl: null,
+      state,
+      startedAt: state === "reviewing" ? "2026-03-09T10:00:00.000Z" : null,
+      completedAt: state === "reviewed" ? "2026-03-09T10:05:00.000Z" : null,
+      findings,
+    });
+    const review = (...reviewers: Array<ReturnType<typeof bot>>): Review => {
+      const reviewing = reviewers.some((reviewer) => reviewer.state === "reviewing");
+      return {
+        state: reviewing ? "reviewing" : "reviewed",
+        reviewers,
+        startedAt: reviewing ? "2026-03-09T10:00:00.000Z" : null,
+        completedAt: reviewing ? null : "2026-03-09T10:05:00.000Z",
+      };
+    };
     const link = (
       number: number,
-      aiReview: NonNullable<ThreadPullRequestLink["snapshot"]>["aiReview"],
+      aiReview: Review,
       state: "open" | "merged" = "open",
     ): ThreadPullRequestLink => ({
       host: "github.com",
@@ -1277,36 +1295,42 @@ describe("resolveThreadStatusPill", () => {
         isDraft: false,
         updatedAt: null,
         syncedAt: "2026-03-09T10:00:00.000Z",
-        ...(aiReview === undefined ? {} : { aiReview }),
+        aiReview,
       },
       stack: null,
     });
     const idle = { ...baseThread, runtime: null, interactionMode: "default" as const };
-    const reviewed = {
-      state: "reviewed" as const,
-      reviewers: [{ name: "Greptile", state: "reviewed" as const }],
-    };
+    const reviewed = review(bot("Greptile", "reviewed", 2));
 
     expect(
       resolveThreadStatusPill({
         thread: {
           ...idle,
-          pullRequests: [
-            link(1, reviewed),
-            link(2, {
-              state: "reviewing",
-              reviewers: [{ name: "CodeRabbit", state: "reviewing" }],
-            }),
-          ],
+          pullRequests: [link(1, reviewed), link(2, review(bot("CodeRabbit", "reviewing")))],
         },
       }),
     ).toMatchObject({
       label: "Reviewing",
-      tooltip: "Reviewing: CodeRabbit · Reviewed: Greptile",
+      tooltip: "Greptile: 2 comments · CodeRabbit: reviewing",
     });
     expect(
-      resolveThreadStatusPill({ thread: { ...idle, pullRequests: [link(1, reviewed)] } }),
-    ).toMatchObject({ label: "Reviewed" });
+      resolveThreadStatusPill({
+        thread: {
+          ...idle,
+          lastVisitedAt: "2026-03-09T10:01:00.000Z",
+          pullRequests: [link(1, reviewed)],
+        },
+      }),
+    ).toMatchObject({ label: "Reviewed", tooltip: "Greptile: 2 comments" });
+    expect(
+      resolveThreadStatusPill({
+        thread: {
+          ...idle,
+          lastVisitedAt: "2026-03-09T10:06:00.000Z",
+          pullRequests: [link(1, reviewed)],
+        },
+      }),
+    ).toBeNull();
     expect(
       resolveThreadStatusPill({ thread: { ...idle, pullRequests: [link(1, reviewed, "merged")] } }),
     ).toBeNull();

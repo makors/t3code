@@ -1,4 +1,8 @@
-import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
+import {
+  type EnvironmentId,
+  type ScopedProjectRef,
+  type ThreadPullRequestAiReview,
+} from "@t3tools/contracts";
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 import { ThreadHoverCard, ThreadHoverCardPopup } from "./ThreadHoverCard";
 import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
@@ -13,8 +17,10 @@ import { discardComposerDraft } from "../lib/discardComposerDraft";
 import { requestCustomSnooze } from "./CustomSnoozeDialog";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
 import {
+  distinctAiReviewers,
   resolveThreadCurrentPullRequestLink,
   threadAiReview,
+  threadAiReviewStatus,
 } from "@t3tools/shared/threadPullRequests";
 import { useAtomValue } from "@effect/atom-react";
 import * as Option from "effect/Option";
@@ -73,14 +79,12 @@ import {
   AlarmClockIcon,
   AlarmClockOffIcon,
   ArrowRightLeftIcon,
-  CheckCheckIcon,
   CheckIcon,
   CircleAlertIcon,
   CircleCheckIcon,
   CircleDashedIcon,
   CircleDotDashedIcon,
   ClockIcon,
-  EyeIcon,
   FolderIcon,
   GitBranchIcon,
   ListFilterIcon,
@@ -867,6 +871,36 @@ function WorkingDuration(props: { startedAt: string | null }) {
   return <span className="tabular-nums">{formatWorkingDurationLabel(nowMs - startedMs)}</span>;
 }
 
+function aiReviewResultLabel(findings: number): string {
+  return findings === 0 ? "No issues" : `${findings} ${findings === 1 ? "comment" : "comments"}`;
+}
+
+function ReviewBotAvatar(props: { reviewer: ThreadPullRequestAiReview["reviewers"][number] }) {
+  return (
+    <span className="relative inline-flex size-3.5 shrink-0 items-center justify-center overflow-hidden rounded-xs bg-muted text-5xs font-semibold text-muted-foreground after:absolute after:inset-0 after:rounded-[inherit] after:ring-1 after:ring-black/10 after:ring-inset dark:after:ring-white/10">
+      {props.reviewer.avatarUrl === null ? (
+        props.reviewer.name.slice(0, 1)
+      ) : (
+        <img src={props.reviewer.avatarUrl} alt="" loading="lazy" className="size-full" />
+      )}
+    </span>
+  );
+}
+
+/** While bots review, the row shows the ones still at work; afterwards, every bot that reviewed. */
+function ReviewBotAvatars(props: { review: ThreadPullRequestAiReview }) {
+  const reviewers = distinctAiReviewers(props.review).filter(
+    (reviewer) => props.review.state === "reviewed" || reviewer.state === "reviewing",
+  );
+  return (
+    <span aria-hidden className="inline-flex shrink-0 items-center gap-0.5">
+      {reviewers.slice(0, 3).map((reviewer) => (
+        <ReviewBotAvatar key={reviewer.name} reviewer={reviewer} />
+      ))}
+    </span>
+  );
+}
+
 function terminalProcessLabel(count: number): string {
   return `${count} terminal ${count === 1 ? "process" : "processes"} running`;
 }
@@ -956,6 +990,7 @@ function SidebarThreadTooltip({
     .filter((instanceId) => instanceId !== modelInstanceId)
     .map((instanceId) => providerEntryByInstanceId.get(instanceId)?.displayName ?? instanceId);
   const supportsMultiplePullRequests = useSupportsMultiplePullRequests(thread.environmentId);
+  const aiReview = threadAiReview(thread.pullRequests);
   return (
     <ThreadHoverCardPopup side="right" align="start" sideOffset={4}>
       <ThreadHoverCard
@@ -1038,6 +1073,19 @@ function SidebarThreadTooltip({
             </div>
           </div>
         ) : null}
+        {aiReview === null
+          ? null
+          : distinctAiReviewers(aiReview).map((reviewer) => (
+              <div key={reviewer.name} className="flex min-w-0 items-center gap-2">
+                <ReviewBotAvatar reviewer={reviewer} />
+                <div className="min-w-0 truncate text-foreground/75">
+                  {reviewer.name} ·{" "}
+                  {reviewer.state === "reviewing"
+                    ? "Reviewing"
+                    : aiReviewResultLabel(reviewer.findings)}
+                </div>
+              </div>
+            ))}
         {thread.runtime?.lastError ? (
           <div
             className={cn(
@@ -1654,7 +1702,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const isUnread = hasUnseenCompletion({ ...thread, lastVisitedAt });
   const status = resolveSidebarThreadStatus(thread);
   // Present only while the environment's AI review status setting is on.
-  const aiReview = threadAiReview(thread.pullRequests);
+  const aiReview = threadAiReviewStatus(thread.pullRequests, lastVisitedAt);
   const lastVisitedDate = lastVisitedAt === undefined ? null : parseTimestampDate(lastVisitedAt);
   const wokeAtDate = props.wokeAt === null ? null : parseTimestampDate(props.wokeAt);
   const isWoke =
@@ -1711,23 +1759,24 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       icon: "woke" as const,
                       className: "text-warning",
                     }
-                  : aiReview?.state === "reviewing"
+                  : aiReview?.kind === "reviewing"
                     ? {
                         label: "Reviewing",
-                        icon: "reviewing" as const,
-                        className: "text-teal-600 dark:text-teal-300",
+                        icon: "review" as const,
+                        // Waiting on bots is not the user's turn, so it reads like Waiting.
+                        className: "text-muted-foreground",
                       }
-                    : isUnread
+                    : aiReview?.kind === "reviewed"
                       ? {
-                          label: "Done",
-                          icon: "done" as const,
-                          className: "text-success",
+                          label: aiReviewResultLabel(aiReview.findings),
+                          icon: "review" as const,
+                          className: aiReview.findings > 0 ? "text-warning" : "text-success",
                         }
-                      : aiReview?.state === "reviewed"
+                      : isUnread
                         ? {
-                            label: "Reviewed",
-                            icon: "reviewed" as const,
-                            className: "text-teal-600 dark:text-teal-300",
+                            label: "Done",
+                            icon: "done" as const,
+                            className: "text-success",
                           }
                         : null;
   const isWokeStatus = topStatus?.icon === "woke";
@@ -2369,16 +2418,18 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                             <CircleAlertIcon aria-hidden className="size-4 shrink-0" />
                           ) : topStatus.icon === "done" ? (
                             <CircleCheckIcon aria-hidden className="size-4 shrink-0" />
-                          ) : topStatus.icon === "reviewing" ? (
-                            <EyeIcon aria-hidden className="size-4 shrink-0" />
-                          ) : topStatus.icon === "reviewed" ? (
-                            <CheckCheckIcon aria-hidden className="size-4 shrink-0" />
+                          ) : topStatus.icon === "review" && aiReview !== null ? (
+                            <ReviewBotAvatars review={aiReview.review} />
                           ) : null}
                           {/* The label alone is the live region: a role="status"
                             wrapper around the ticking duration would make
                             screen readers announce every second. */}
                           <span role="status">{topStatus.label}</span>
-                          {status === "working" ? (
+                          {aiReview?.kind === "reviewing" && topStatus.icon === "review" ? (
+                            <span aria-hidden>
+                              <WorkingDuration startedAt={aiReview.review.startedAt} />
+                            </span>
+                          ) : status === "working" ? (
                             <span aria-hidden>
                               <WorkingDuration startedAt={resolveWorkingStartedAt(thread)} />
                             </span>

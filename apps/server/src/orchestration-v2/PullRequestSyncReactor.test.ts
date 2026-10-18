@@ -13,8 +13,6 @@ import {
   type OrchestrationV2DomainEvent,
   type OrchestrationV2Run,
   type OrchestrationProjectShell,
-  type PullRequestActivity,
-  type PullRequestDetail,
   type PullRequestRef,
   type PullRequestStack,
   type PullRequestSummary,
@@ -34,7 +32,10 @@ import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import { TestClock } from "effect/testing";
 
-import { PullRequestProviderError } from "@t3tools/source-control-core/server/PullRequestProvider";
+import {
+  type ProviderChangeRequestReviewSignals,
+  PullRequestProviderError,
+} from "@t3tools/source-control-core/server/PullRequestProvider";
 import * as GitManager from "../git/GitManager.ts";
 import * as PullRequestService from "../pullRequest/PullRequestService.ts";
 import * as ServerActivation from "../serverActivation.ts";
@@ -175,12 +176,9 @@ interface HarnessOptions {
     input: PullRequestRef,
   ) => Effect.Effect<PullRequestStack | null, PullRequestOperationError>;
   readonly settings?: Parameters<typeof ServerSettings.layerTest>[0];
-  readonly detail?: (
+  readonly reviewSignals?: (
     input: PullRequestRef,
-  ) => Effect.Effect<PullRequestDetail, PullRequestOperationError>;
-  readonly activity?: (
-    input: PullRequestRef,
-  ) => Effect.Effect<PullRequestActivity, PullRequestOperationError>;
+  ) => Effect.Effect<ProviderChangeRequestReviewSignals | null, PullRequestOperationError>;
 }
 
 const makeHarness = Effect.fn("makePullRequestSyncHarness")(function* (options: HarnessOptions) {
@@ -231,10 +229,9 @@ const makeHarness = Effect.fn("makePullRequestSyncHarness")(function* (options: 
       summary,
       stack,
       invalidate: options.invalidate ?? (() => Effect.void),
-      detail: (input) =>
-        options.detail?.(input) ?? Effect.die(new Error("unexpected pull request detail read")),
-      activity: (input) =>
-        options.activity?.(input) ?? Effect.die(new Error("unexpected pull request activity read")),
+      reviewSignals: (input) =>
+        options.reviewSignals?.(input) ??
+        Effect.die(new Error("unexpected pull request review signals read")),
       subscribeStateChanges: Effect.succeed(Stream.fromQueue(stateChanges)),
     }),
     Layer.mock(GitManager.GitManager)({
@@ -1171,50 +1168,56 @@ describe("PullRequestSyncReactor", () => {
     Effect.scoped(
       Effect.gen(function* () {
         yield* TestClock.setTime(Date.parse(NOW));
-        let bugbot: "pending" | "success" = "pending";
-        let detailReads = 0;
+        let bugbot: "pending" | "completed" = "pending";
+        let reads = 0;
+        const check = (name: string, actor: string, status: "pending" | "completed") => ({
+          name,
+          actor,
+          avatarUrl: null,
+          status,
+          conclusion: status === "completed" ? "success" : null,
+          description: null,
+          startedAt: "2026-08-28T11:55:00.000Z",
+          completedAt: status === "completed" ? "2026-08-28T11:58:00.000Z" : null,
+        });
         const fixture = yield* makeHarness({
           snapshot: makeSnapshot([makeThread("one", { pullRequests: [makeLink(7, {})] })]),
           settings: { pullRequestAiReviewStatus: true },
-          // Only the fields the AI review reads; the rest of the detail is irrelevant here.
-          detail: () =>
+          reviewSignals: () =>
             Effect.sync(() => {
-              detailReads += 1;
+              reads += 1;
               return {
+                headSha: "head",
                 checks: [
-                  { name: "CodeRabbit", status: "success", description: null, url: null },
-                  { name: "Cursor Bugbot", status: bugbot, description: null, url: null },
+                  check("CodeRabbit", "coderabbitai", "completed"),
+                  check("Cursor Bugbot", "cursor", bugbot),
                 ],
-                reviewers: [],
-              } as unknown as PullRequestDetail;
-            }),
-          activity: () =>
-            Effect.succeed({
-              comments: [],
-              commentCount: 0,
-              commentsTruncated: false,
-              reviewThreads: [],
-              commits: [],
+                requestedReviewers: [],
+                reviews: [],
+                openThreadAuthors: [],
+                reactions: [],
+                comments: [],
+              };
             }),
         });
         yield* Effect.gen(function* () {
           const reactor = yield* startAndSweep(fixture);
           const first = yield* Ref.get(fixture.syncCommands);
-          assert.deepStrictEqual(first.at(-1)?.snapshot.aiReview, {
-            state: "reviewing",
-            reviewers: [
-              { name: "CodeRabbit", state: "reviewed" },
-              { name: "Cursor Bugbot", state: "reviewing" },
+          assert.deepStrictEqual(
+            first.at(-1)?.snapshot.aiReview?.reviewers.map(({ name, state }) => [name, state]),
+            [
+              ["CodeRabbit", "reviewed"],
+              ["Cursor Bugbot", "reviewing"],
             ],
-          });
+          );
           yield* Ref.update(fixture.snapshots, (snapshot) => applySync(snapshot, first));
 
           // The summary did not move, so a reviewer still at work is re-read on its own cadence.
-          bugbot = "success";
+          bugbot = "completed";
           yield* sweepAgain(fixture, reactor);
-          assert.strictEqual(detailReads, 1);
+          assert.strictEqual(reads, 1);
           yield* sweepAgain(fixture, reactor);
-          assert.strictEqual(detailReads, 2);
+          assert.strictEqual(reads, 2);
           assert.strictEqual(
             (yield* Ref.get(fixture.syncCommands)).at(-1)?.snapshot.aiReview?.state,
             "reviewed",
@@ -1235,7 +1238,18 @@ describe("PullRequestSyncReactor", () => {
                 makeLink(7, {
                   aiReview: {
                     state: "reviewed",
-                    reviewers: [{ name: "Greptile", state: "reviewed" }],
+                    reviewers: [
+                      {
+                        name: "Greptile",
+                        avatarUrl: null,
+                        state: "reviewed",
+                        startedAt: null,
+                        completedAt: null,
+                        findings: 0,
+                      },
+                    ],
+                    startedAt: null,
+                    completedAt: null,
                   },
                 }),
               ],
