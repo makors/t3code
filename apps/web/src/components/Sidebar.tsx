@@ -12,7 +12,10 @@ import {
 import { discardComposerDraft } from "../lib/discardComposerDraft";
 import { requestCustomSnooze } from "./CustomSnoozeDialog";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
-import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullRequests";
+import {
+  resolveThreadCurrentPullRequestLink,
+  threadAiReview,
+} from "@t3tools/shared/threadPullRequests";
 import { useAtomValue } from "@effect/atom-react";
 import * as Option from "effect/Option";
 import { Atom } from "effect/reactivity";
@@ -70,12 +73,14 @@ import {
   AlarmClockIcon,
   AlarmClockOffIcon,
   ArrowRightLeftIcon,
+  CheckCheckIcon,
   CheckIcon,
   CircleAlertIcon,
   CircleCheckIcon,
   CircleDashedIcon,
   CircleDotDashedIcon,
   ClockIcon,
+  EyeIcon,
   FolderIcon,
   GitBranchIcon,
   ListFilterIcon,
@@ -1648,6 +1653,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
 
   const isUnread = hasUnseenCompletion({ ...thread, lastVisitedAt });
   const status = resolveSidebarThreadStatus(thread);
+  // Present only while the environment's AI review status setting is on.
+  const aiReview = threadAiReview(thread.pullRequests);
   const lastVisitedDate = lastVisitedAt === undefined ? null : parseTimestampDate(lastVisitedAt);
   const wokeAtDate = props.wokeAt === null ? null : parseTimestampDate(props.wokeAt);
   const isWoke =
@@ -1704,13 +1711,25 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       icon: "woke" as const,
                       className: "text-warning",
                     }
-                  : isUnread
+                  : aiReview?.state === "reviewing"
                     ? {
-                        label: "Done",
-                        icon: "done" as const,
-                        className: "text-success",
+                        label: "Reviewing",
+                        icon: "reviewing" as const,
+                        className: "text-teal-600 dark:text-teal-300",
                       }
-                    : null;
+                    : isUnread
+                      ? {
+                          label: "Done",
+                          icon: "done" as const,
+                          className: "text-success",
+                        }
+                      : aiReview?.state === "reviewed"
+                        ? {
+                            label: "Reviewed",
+                            icon: "reviewed" as const,
+                            className: "text-teal-600 dark:text-teal-300",
+                          }
+                        : null;
   const isWokeStatus = topStatus?.icon === "woke";
 
   const branchMismatch = resolveLocalCheckoutBranchMismatch({
@@ -2350,6 +2369,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                             <CircleAlertIcon aria-hidden className="size-4 shrink-0" />
                           ) : topStatus.icon === "done" ? (
                             <CircleCheckIcon aria-hidden className="size-4 shrink-0" />
+                          ) : topStatus.icon === "reviewing" ? (
+                            <EyeIcon aria-hidden className="size-4 shrink-0" />
+                          ) : topStatus.icon === "reviewed" ? (
+                            <CheckCheckIcon aria-hidden className="size-4 shrink-0" />
                           ) : null}
                           {/* The label alone is the live region: a role="status"
                             wrapper around the ticking duration would make
