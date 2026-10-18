@@ -36,6 +36,35 @@ export const ThreadPullRequestLinkSource = Schema.Literals([
 ]);
 export type ThreadPullRequestLinkSource = typeof ThreadPullRequestLinkSource.Type;
 
+export const ThreadPullRequestAiReviewState = Schema.Literals(["reviewing", "reviewed"]);
+export type ThreadPullRequestAiReviewState = typeof ThreadPullRequestAiReviewState.Type;
+
+export const ThreadPullRequestAiReviewer = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  avatarUrl: Schema.NullOr(TrimmedNonEmptyString),
+  state: ThreadPullRequestAiReviewState,
+  /** Host times; null where the bot's signal carries none, such as a review request. */
+  startedAt: Schema.NullOr(IsoDateTime),
+  completedAt: Schema.NullOr(IsoDateTime),
+  /** Unresolved threads the bot opened that still apply to the diff. */
+  findings: NonNegativeInt,
+});
+export type ThreadPullRequestAiReviewer = typeof ThreadPullRequestAiReviewer.Type;
+
+/**
+ * Review bots (CodeRabbit, Greptile, ...) seen on the pull request. `state` is "reviewing" while
+ * any of them is, so several reviewers read as one.
+ */
+export const ThreadPullRequestAiReview = Schema.Struct({
+  state: ThreadPullRequestAiReviewState,
+  reviewers: Schema.Array(ThreadPullRequestAiReviewer),
+  /** The earliest start among reviewers still at work. */
+  startedAt: Schema.NullOr(IsoDateTime),
+  /** When the last reviewer finished; null while any is still reviewing. */
+  completedAt: Schema.NullOr(IsoDateTime),
+});
+export type ThreadPullRequestAiReview = typeof ThreadPullRequestAiReview.Type;
+
 export const ThreadPullRequestSnapshot = Schema.Struct({
   state: PullRequestState,
   title: TrimmedNonEmptyString,
@@ -53,6 +82,8 @@ export const ThreadPullRequestSnapshot = Schema.Struct({
   reviewDecision: Schema.optional(Schema.NullOr(PullRequestReviewDecision)),
   checksState: Schema.optional(Schema.NullOr(PullRequestChecksState)),
   mergeability: Schema.optional(PullRequestMergeability),
+  /** Present only while the environment's AI review status setting is on. */
+  aiReview: Schema.optional(ThreadPullRequestAiReview),
 });
 export type ThreadPullRequestSnapshot = typeof ThreadPullRequestSnapshot.Type;
 

@@ -93,6 +93,7 @@ function AutoSettleSettingsRows() {
     patch: Partial<AutoSettleSettings> & {
       autoResumeLimitedThreads?: boolean;
       snoozeLimitedThreads?: boolean;
+      pullRequestAiReviewStatus?: boolean;
     },
   ) => {
     if (
@@ -135,6 +136,10 @@ function AutoSettleSettingsRows() {
   const supportsProjectOverrides = syncTargets.every(
     (target) =>
       target.environment.serverConfig.environment.capabilities.projectSettingsOverrides === true,
+  );
+  const supportsAiReviewStatus = syncTargets.every(
+    (target) =>
+      target.environment.serverConfig.environment.capabilities.pullRequestAiReviewStatus === true,
   );
   const disabled =
     !canWriteSettings || pendingWrites > 0 || (projectSelected && !supportsProjectOverrides);
@@ -201,6 +206,17 @@ function AutoSettleSettingsRows() {
             value={uniformMobileSetting(displayTargets, "snoozeLimitedThreads")}
             disabled={disabled}
             onValueChange={(value) => writeToAll({ snoozeLimitedThreads: value })}
+          />
+        </SettingsSection>
+      ) : null}
+      {!projectSelected && supportsAiReviewStatus ? (
+        <SettingsSection title="Pull requests">
+          <SettingsSwitchRow
+            icon={{ ios: "eye", android: "visibility" }}
+            label="AI review status"
+            value={uniformMobileSetting(displayTargets, "pullRequestAiReviewStatus")}
+            disabled={disabled}
+            onValueChange={(value) => writeToAll({ pullRequestAiReviewStatus: value })}
           />
         </SettingsSection>
       ) : null}

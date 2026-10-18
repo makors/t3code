@@ -66,6 +66,50 @@ export interface ProviderChangeRequestWatchFingerprint {
   readonly remarks: string;
 }
 
+/**
+ * What review bots leave on a change request, unjudged. Each bot reports progress through a
+ * different subset of these, so the server decides per bot which one to trust.
+ */
+export interface ProviderChangeRequestReviewSignals {
+  readonly headSha: string | null;
+  /** Checks on the head commit. `actor` is the app or account that posted it, when the host says. */
+  readonly checks: ReadonlyArray<{
+    readonly name: string;
+    readonly actor: string | null;
+    readonly avatarUrl: string | null;
+    readonly status: "pending" | "completed";
+    /** Lowercase: success, neutral, skipped, failure, ... */
+    readonly conclusion: string | null;
+    readonly description: string | null;
+    readonly startedAt: string | null;
+    readonly completedAt: string | null;
+  }>;
+  readonly requestedReviewers: ReadonlyArray<{
+    readonly login: string;
+    readonly avatarUrl: string | null;
+  }>;
+  readonly reviews: ReadonlyArray<{
+    readonly login: string;
+    readonly avatarUrl: string | null;
+    readonly submittedAt: string | null;
+    readonly commitSha: string | null;
+  }>;
+  /** Author of the first comment of each unresolved thread that still applies to the diff. */
+  readonly openThreadAuthors: ReadonlyArray<string>;
+  /** Reactions on the change request's description. */
+  readonly reactions: ReadonlyArray<{
+    readonly content: string;
+    readonly logins: ReadonlyArray<string>;
+  }>;
+  readonly comments: ReadonlyArray<{
+    readonly login: string;
+    readonly avatarUrl: string | null;
+    readonly body: string;
+    readonly createdAt: string;
+    readonly editedAt: string | null;
+  }>;
+}
+
 export interface PullRequestProviderFailure {
   readonly reason: PullRequestProviderError["reason"];
   readonly retryAt?: number | undefined;
@@ -351,6 +395,11 @@ export interface PullRequestProviderApi {
   readonly getChangeRequestWatchFingerprint?: (
     input: ProviderRepositoryRef & { readonly number: number },
   ) => Effect.Effect<ProviderChangeRequestWatchFingerprint | null, PullRequestProviderError>;
+
+  /** Absent where the host has no review bots worth reading. */
+  readonly getChangeRequestReviewSignals?: (
+    input: ProviderRepositoryRef & { readonly number: number },
+  ) => Effect.Effect<ProviderChangeRequestReviewSignals | null, PullRequestProviderError>;
 
   readonly getChangeRequestStack?: (
     input: ProviderRepositoryRef & { readonly includeDetails?: boolean; readonly number: number },

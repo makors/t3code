@@ -36,12 +36,14 @@ import type {
 import { quoteGitPatchPath } from "@t3tools/shared/gitPatchPath";
 import { decodeJsonResult } from "@t3tools/shared/schemaJson";
 import { dedupeChecks } from "@t3tools/source-control-core/server/pullRequestChecks";
+import type { ProviderChangeRequestReviewSignals } from "@t3tools/source-control-core/server/PullRequestProvider";
 
 import type * as GitHubSchema from "../../schema/github.graphql.ts";
 import type {
   PullRequestSummaryRepositoryPullRequestPullRequest as SummarizedPullRequest,
   PullRequestWatchFingerprintRepositoryPullRequestPullRequest as WatchedPullRequest,
 } from "./pullRequestBatches.graphql.ts";
+import type { PullRequestReviewBotsRepositoryPullRequestPullRequest as ReviewBotsPullRequest } from "./pullRequestReads.graphql.ts";
 import {
   PageInfo as ListingPageInfo,
   PullRequestList,
@@ -1080,6 +1082,94 @@ export function toPullRequestWatchFingerprint(
       newestEdit(pr.reviews),
       pr.reviewThreads.totalCount,
     ].join(" "),
+  };
+}
+
+// GraphQL drops the `[bot]` suffix that REST logins carry; the server compares without it.
+const botLogin = (login: string) => login.replace(/\[bot\]$/u, "");
+
+export function toPullRequestReviewSignals(
+  pr: ReviewBotsPullRequest,
+): ProviderChangeRequestReviewSignals {
+  const contexts = nodesOf(nodesOf(pr.commits)[0]?.commit.statusCheckRollup?.contexts);
+  return {
+    headSha: pr.headRefOid,
+    checks: contexts.flatMap((context) => {
+      if (context.__typename === "CheckRun") {
+        const app = context.checkSuite.app;
+        return [
+          {
+            name: context.name,
+            actor: app?.slug ?? null,
+            avatarUrl: app?.logoUrl ?? null,
+            status: context.status === "COMPLETED" ? "completed" : "pending",
+            conclusion: context.conclusion?.toLowerCase() ?? null,
+            description: context.title,
+            startedAt: context.startedAt,
+            completedAt: context.completedAt,
+          } as const,
+        ];
+      }
+      if (context.__typename === "StatusContext") {
+        const pending = context.state === "PENDING" || context.state === "EXPECTED";
+        return [
+          {
+            name: context.context,
+            actor: context.creator === null ? null : botLogin(context.creator.login),
+            avatarUrl: context.creator?.avatarUrl ?? null,
+            status: pending ? "pending" : "completed",
+            conclusion: pending ? null : context.state.toLowerCase(),
+            description: context.description,
+            // A status keeps only its latest state, so its time is when it got there.
+            startedAt: pending ? context.createdAt : null,
+            completedAt: pending ? null : context.createdAt,
+          } as const,
+        ];
+      }
+      return [];
+    }),
+    requestedReviewers: nodesOf(pr.reviewRequests).flatMap(({ requestedReviewer }) =>
+      requestedReviewer !== null && "login" in requestedReviewer
+        ? [{ login: botLogin(requestedReviewer.login), avatarUrl: requestedReviewer.avatarUrl }]
+        : [],
+    ),
+    reviews: nodesOf(pr.reviews).flatMap((review) =>
+      review.author === null
+        ? []
+        : [
+            {
+              login: botLogin(review.author.login),
+              avatarUrl: review.author.avatarUrl,
+              submittedAt: review.submittedAt,
+              commitSha: review.commit?.oid ?? null,
+            },
+          ],
+    ),
+    openThreadAuthors: nodesOf(pr.reviewThreads).flatMap((thread) => {
+      const author = nodesOf(thread.comments)[0]?.author;
+      return thread.isResolved || thread.isOutdated || author == null
+        ? []
+        : [botLogin(author.login)];
+    }),
+    reactions: (pr.reactionGroups ?? []).map((group) => ({
+      content: group.content.toLowerCase(),
+      logins: nodesOf(group.reactors).flatMap((reactor) =>
+        "login" in reactor ? [botLogin(reactor.login)] : [],
+      ),
+    })),
+    comments: nodesOf(pr.comments).flatMap((comment) =>
+      comment.author === null
+        ? []
+        : [
+            {
+              login: botLogin(comment.author.login),
+              avatarUrl: comment.author.avatarUrl,
+              body: comment.body,
+              createdAt: comment.createdAt,
+              editedAt: comment.lastEditedAt,
+            },
+          ],
+    ),
   };
 }
 

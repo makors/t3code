@@ -323,6 +323,21 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["hide fold running monitoring threads inbox sidebar shelf"],
   },
   {
+    id: "ai-review-status",
+    title: "AI review status",
+    to: "/settings/general",
+    searchTerms: [
+      "pull request bot reviewer coderabbit greptile copilot bugbot reviewing reviewed sidebar",
+    ],
+  },
+  {
+    id: "ai-reviewers",
+    title: "Additional AI reviewers",
+    to: "/settings/general",
+    targetId: "ai-review-status",
+    searchTerms: ["pull request bot reviewer custom login check name"],
+  },
+  {
     id: "auto-settle-inactive-threads",
     title: "Auto-settle inactive threads",
     to: "/settings/general",

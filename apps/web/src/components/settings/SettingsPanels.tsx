@@ -580,6 +580,10 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.sidebarAutoSettleOnMerge !== DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge
       ? ["Auto-settle merged threads"]
       : []),
+    ...(settings.pullRequestAiReviewStatus !== DEFAULT_UNIFIED_SETTINGS.pullRequestAiReviewStatus
+      ? ["AI review status"]
+      : []),
+    ...(settings.pullRequestAiReviewers.length > 0 ? ["AI reviewers"] : []),
     ...(settings.autoResumeLimitedThreads !== DEFAULT_UNIFIED_SETTINGS.autoResumeLimitedThreads
       ? ["Auto-resume limited threads"]
       : []),
@@ -741,6 +745,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
       sidebarAutoSettleKeepPullRequests: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleKeepPullRequests,
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
+      pullRequestAiReviewStatus: DEFAULT_UNIFIED_SETTINGS.pullRequestAiReviewStatus,
+      pullRequestAiReviewers: DEFAULT_UNIFIED_SETTINGS.pullRequestAiReviewers,
       autoResumeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.autoResumeLimitedThreads,
       snoozeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.snoozeLimitedThreads,
       responseStreamingMode: DEFAULT_UNIFIED_SETTINGS.responseStreamingMode,
@@ -1956,6 +1962,52 @@ function AutoSettleDaysInput({
   );
 }
 
+const MAX_AI_REVIEWERS = 20;
+
+function AiReviewersInput({
+  value,
+  onCommit,
+}: {
+  value: ReadonlyArray<string>;
+  onCommit: (reviewers: Array<string>) => void;
+}) {
+  const joined = value.join(", ");
+  const [draft, setDraft] = useState(joined);
+  const [draftSource, setDraftSource] = useState(joined);
+  if (draftSource !== joined) {
+    setDraftSource(joined);
+    setDraft(joined);
+  }
+
+  const commit = () => {
+    const reviewers = [
+      ...new Set(
+        draft
+          .split(",")
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0 && entry.length <= 100),
+      ),
+    ].slice(0, MAX_AI_REVIEWERS);
+    if (reviewers.join(", ") === joined) setDraft(joined);
+    else onCommit(reviewers);
+  };
+
+  return (
+    <Input
+      size="sm"
+      className="w-full sm:w-56"
+      placeholder="acme-reviewer[bot]"
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") commit();
+      }}
+      aria-label="Additional AI reviewers"
+    />
+  );
+}
+
 const LEGACY_FEATURE_TARGET_IDS: ReadonlySet<string> = new Set([
   "legacy-plan-mode",
   "legacy-context-window-indicator",
@@ -2069,6 +2121,11 @@ export function GeneralSettingsPanel() {
   const supportsAutoSettlementScope = connectedEnvironments.every(
     (target) => target.serverConfig?.environment.capabilities.threadAutoSettlementScope === true,
   );
+  const supportsAiReviewStatus =
+    connectedEnvironments.length > 0 &&
+    connectedEnvironments.every(
+      (target) => target.serverConfig?.environment.capabilities.pullRequestAiReviewStatus === true,
+    );
   const supportsRestartContinuation =
     connectedEnvironments.length > 0 &&
     connectedEnvironments.every(
@@ -2270,6 +2327,41 @@ export function GeneralSettingsPanel() {
             />
           }
         />
+
+        {supportsAiReviewStatus ? (
+          <>
+            <SettingsRow
+              serverScoped
+              {...searchableSetting("ai-review-status")}
+              description="Show when bots like CodeRabbit or Greptile are reviewing a thread's pull request, and what they found once they finish."
+              settingKeys={["pullRequestAiReviewStatus"]}
+              control={
+                <ScopedSwitch
+                  settingKeys={["pullRequestAiReviewStatus"]}
+                  checked={settings.pullRequestAiReviewStatus}
+                  onCheckedChange={(checked) =>
+                    updateSettings({ pullRequestAiReviewStatus: Boolean(checked) })
+                  }
+                  aria-label="AI review status"
+                />
+              }
+            />
+            {settings.pullRequestAiReviewStatus ? (
+              <SettingsRow
+                serverScoped
+                settingKeys={["pullRequestAiReviewers"]}
+                title={searchableSetting("ai-reviewers").title}
+                description="Other review bots to track, by login or check name, separated by commas."
+                control={
+                  <AiReviewersInput
+                    value={settings.pullRequestAiReviewers}
+                    onCommit={(reviewers) => updateSettings({ pullRequestAiReviewers: reviewers })}
+                  />
+                }
+              />
+            ) : null}
+          </>
+        ) : null}
 
         {supportsAutoSettlement ? (
           <>

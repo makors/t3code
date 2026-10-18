@@ -1,6 +1,10 @@
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
-import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
+import {
+  distinctAiReviewers,
+  threadAiReviewStatus,
+  threadPullRequestSearchTerms,
+} from "@t3tools/shared/threadPullRequests";
 import * as React from "react";
 import {
   isAtomCommandInterrupted,
@@ -8,7 +12,12 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { defaultAnimateLayoutChanges, type AnimateLayoutChanges } from "@dnd-kit/sortable";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
-import type { ContextMenuItem, EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type {
+  ContextMenuItem,
+  EnvironmentId,
+  ThreadId,
+  ThreadPullRequestAiReview,
+} from "@t3tools/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
 import type { AsyncResult } from "effect/reactivity";
 import { planPinnedReorder } from "@t3tools/client-runtime/state/thread-sort";
@@ -576,10 +585,13 @@ export interface ThreadStatusPill {
     | "Pending Approval"
     | "Awaiting Input"
     | "Waiting"
-    | "Plan Ready";
+    | "Plan Ready"
+    | "Reviewing"
+    | "Reviewed";
   colorClass: string;
   dotClass: string;
   pulse: boolean;
+  tooltip?: string;
 }
 
 const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
@@ -589,6 +601,8 @@ const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
   Connecting: 3,
   Waiting: 2.5,
   "Plan Ready": 2,
+  Reviewing: 1.5,
+  Reviewed: 1.2,
   Completed: 1,
 };
 
@@ -602,6 +616,7 @@ type ThreadStatusInput = Pick<
   | "latestRun"
   | "runtime"
 > & {
+  pullRequests?: SidebarThreadSummary["pullRequests"] | undefined;
   lastVisitedAt?: string | null | undefined;
   pendingBackgroundTasks?: SidebarThreadSummary["pendingBackgroundTasks"] | undefined;
 };
@@ -1147,6 +1162,35 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
+  // Present only while the environment's AI review status setting is on.
+  const aiReview = threadAiReviewStatus(thread.pullRequests ?? [], thread.lastVisitedAt);
+  if (aiReview?.kind === "reviewing") {
+    return {
+      label: "Reviewing",
+      colorClass: "text-muted-foreground",
+      dotClass: "bg-muted-foreground",
+      pulse: false,
+      tooltip: aiReviewTooltip(aiReview.review),
+    };
+  }
+  if (aiReview?.kind === "reviewed") {
+    return aiReview.findings > 0
+      ? {
+          label: "Reviewed",
+          colorClass: "text-amber-600 dark:text-amber-300/90",
+          dotClass: "bg-amber-500 dark:bg-amber-300/90",
+          pulse: false,
+          tooltip: aiReviewTooltip(aiReview.review),
+        }
+      : {
+          label: "Reviewed",
+          colorClass: "text-emerald-600 dark:text-emerald-300/90",
+          dotClass: "bg-emerald-500 dark:bg-emerald-300/90",
+          pulse: false,
+          tooltip: aiReviewTooltip(aiReview.review),
+        };
+  }
+
   if (hasUnseenCompletion(thread)) {
     return {
       label: "Completed",
@@ -1157,6 +1201,21 @@ export function resolveThreadStatusPill(input: {
   }
 
   return null;
+}
+
+function aiReviewTooltip(review: ThreadPullRequestAiReview): string {
+  return distinctAiReviewers(review)
+    .map(
+      (reviewer) =>
+        `${reviewer.name}: ${
+          reviewer.state === "reviewing"
+            ? "reviewing"
+            : reviewer.findings === 0
+              ? "no issues"
+              : `${reviewer.findings} ${reviewer.findings === 1 ? "comment" : "comments"}`
+        }`,
+    )
+    .join(" · ");
 }
 
 export function resolveProjectStatusIndicator(

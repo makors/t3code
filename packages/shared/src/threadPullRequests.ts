@@ -3,6 +3,7 @@ import type {
   RepositoryIdentity,
   SourceControlProviderKind,
   ThreadLinkedPullRequest,
+  ThreadPullRequestAiReview,
   ThreadPullRequestKey,
   ThreadPullRequestLink,
 } from "@t3tools/contracts";
@@ -410,4 +411,79 @@ export function pullRequestListLines(
           : null,
     }));
   });
+}
+
+/**
+ * AI review status across a thread's open pull requests: reviewing while any reviewer on any of
+ * them is, so a thread with several pull requests reads as one.
+ */
+export function threadAiReview(
+  links: ReadonlyArray<ThreadPullRequestLink>,
+): ThreadPullRequestAiReview | null {
+  const reviews = visibleThreadPullRequests(links).flatMap((link) =>
+    link.snapshot?.state === "open" && link.snapshot.aiReview !== undefined
+      ? [link.snapshot.aiReview]
+      : [],
+  );
+  if (reviews.length === 0) return null;
+  const reviewing = reviews.filter((review) => review.state === "reviewing");
+  const times = (values: ReadonlyArray<string | null>) =>
+    values.filter((value) => value !== null).sort();
+  return {
+    state: reviewing.length > 0 ? "reviewing" : "reviewed",
+    reviewers: reviews.flatMap((review) => review.reviewers),
+    startedAt: times(reviewing.map((review) => review.startedAt))[0] ?? null,
+    completedAt:
+      reviewing.length > 0
+        ? null
+        : (times(reviews.map((review) => review.completedAt)).at(-1) ?? null),
+  };
+}
+
+export type ThreadAiReviewStatus =
+  | { readonly kind: "reviewing"; readonly review: ThreadPullRequestAiReview }
+  | {
+      readonly kind: "reviewed";
+      readonly review: ThreadPullRequestAiReview;
+      readonly findings: number;
+    };
+
+/**
+ * What a thread row says about its review bots. A finished review is news until the thread is
+ * visited after it, like a finished run, so it does not sit on every reviewed thread for good.
+ * `lastVisitedAt` is undefined on servers that do not track visits; the review then stays news.
+ */
+export function threadAiReviewStatus(
+  links: ReadonlyArray<ThreadPullRequestLink>,
+  lastVisitedAt: string | null | undefined,
+): ThreadAiReviewStatus | null {
+  const review = threadAiReview(links);
+  if (review === null) return null;
+  if (review.state === "reviewing") return { kind: "reviewing", review };
+  if (review.completedAt === null) return null;
+  if (lastVisitedAt != null && Date.parse(lastVisitedAt) >= Date.parse(review.completedAt)) {
+    return null;
+  }
+  const findings = review.reviewers.reduce((sum, reviewer) => sum + reviewer.findings, 0);
+  return { kind: "reviewed", review, findings };
+}
+
+/** One entry per bot, preferring the one still at work when a bot reviews several pull requests. */
+export function distinctAiReviewers(
+  review: ThreadPullRequestAiReview,
+): ReadonlyArray<ThreadPullRequestAiReview["reviewers"][number]> {
+  const byName = new Map<string, ThreadPullRequestAiReview["reviewers"][number]>();
+  for (const reviewer of review.reviewers) {
+    const seen = byName.get(reviewer.name);
+    byName.set(
+      reviewer.name,
+      seen === undefined
+        ? reviewer
+        : {
+            ...(seen.state === "reviewing" ? seen : reviewer),
+            findings: seen.findings + reviewer.findings,
+          },
+    );
+  }
+  return [...byName.values()];
 }

@@ -88,6 +88,7 @@ import * as SourceControlRateLimit from "@t3tools/source-control-core/server/Sou
 import {
   type ProviderChangeRequest,
   type ProviderListCursor,
+  type ProviderChangeRequestReviewSignals,
   type ProviderChangeRequestWatchFingerprint,
   type PullRequestProviderApi,
   PullRequestProviderError,
@@ -212,6 +213,10 @@ export class PullRequestService extends Context.Service<
     readonly watchFingerprint: (
       input: PullRequestRef,
     ) => Effect.Effect<ProviderChangeRequestWatchFingerprint | null, PullRequestError>;
+    /** Null where the host has no review bot signals to read. */
+    readonly reviewSignals: (
+      input: PullRequestRef,
+    ) => Effect.Effect<ProviderChangeRequestReviewSignals | null, PullRequestError>;
     readonly activity: (
       input: PullRequestRef,
     ) => Effect.Effect<PullRequestActivity, PullRequestError>;
@@ -513,6 +518,14 @@ function withRateLimitBackoff(
     ...(api.getChangeRequestStack === undefined
       ? {}
       : { getChangeRequestStack: wrap("getChangeRequestStack", api.getChangeRequestStack) }),
+    ...(api.getChangeRequestReviewSignals === undefined
+      ? {}
+      : {
+          getChangeRequestReviewSignals: wrap(
+            "getChangeRequestReviewSignals",
+            api.getChangeRequestReviewSignals,
+          ),
+        }),
     ...(api.getChangeRequestWatchFingerprint === undefined
       ? {}
       : {
@@ -2814,6 +2827,30 @@ export const make = Effect.gen(function* () {
     },
   );
 
+  const reviewSignalsCache = yield* Cache.makeWith(
+    (key: string) => {
+      const input = refOfCacheKey(key);
+      return requireProject(input).pipe(
+        Effect.flatMap((project) =>
+          project.api.getChangeRequestReviewSignals === undefined
+            ? Effect.succeed(null)
+            : project.api
+                .getChangeRequestReviewSignals({
+                  cwd: project.project.workspaceRoot,
+                  repository: project.repository,
+                  host: project.host,
+                  number: input.number,
+                })
+                .pipe(Effect.mapError(toPullRequestError("reviewSignals"))),
+        ),
+      );
+    },
+    {
+      capacity: DETAIL_CACHE_CAPACITY,
+      timeToLive: (exit) => (Exit.isSuccess(exit) ? CHECKS_CACHE_TTL : Duration.zero),
+    },
+  );
+
   const detailCache = yield* Cache.makeWith(
     (key: string) => {
       const statsKey = statsCacheKey(key);
@@ -3360,6 +3397,9 @@ export const make = Effect.gen(function* () {
     checks: credentialCached((input) => Cache.get(checksCache, refCacheKey(input))),
     watchFingerprint: credentialCached((input) =>
       Cache.get(watchFingerprintCache, refCacheKey(input)),
+    ),
+    reviewSignals: credentialCached((input) =>
+      Cache.get(reviewSignalsCache, refCacheKey(input)),
     ),
     activity: credentialCached(activity),
     preview: credentialCached(preview),

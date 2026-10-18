@@ -63,7 +63,14 @@ import {
 } from "./Sidebar.logic";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
-import { EnvironmentId, ProjectId, ProviderInstanceId, RunId, ThreadId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProjectId,
+  ProviderInstanceId,
+  RunId,
+  ThreadId,
+  type ThreadPullRequestLink,
+} from "@t3tools/contracts";
 
 import {
   DEFAULT_INTERACTION_MODE,
@@ -1248,6 +1255,88 @@ describe("resolveThreadStatusPill", () => {
         },
       }),
     ).toMatchObject({ label: "Pending Approval", pulse: false });
+  });
+
+  it("shows AI review status, and a finished review only until the thread is visited", () => {
+    type Review = NonNullable<NonNullable<ThreadPullRequestLink["snapshot"]>["aiReview"]>;
+    const bot = (name: string, state: "reviewing" | "reviewed", findings = 0) => ({
+      name,
+      avatarUrl: null,
+      state,
+      startedAt: state === "reviewing" ? "2026-03-09T10:00:00.000Z" : null,
+      completedAt: state === "reviewed" ? "2026-03-09T10:05:00.000Z" : null,
+      findings,
+    });
+    const review = (...reviewers: Array<ReturnType<typeof bot>>): Review => {
+      const reviewing = reviewers.some((reviewer) => reviewer.state === "reviewing");
+      return {
+        state: reviewing ? "reviewing" : "reviewed",
+        reviewers,
+        startedAt: reviewing ? "2026-03-09T10:00:00.000Z" : null,
+        completedAt: reviewing ? null : "2026-03-09T10:05:00.000Z",
+      };
+    };
+    const link = (
+      number: number,
+      aiReview: Review,
+      state: "open" | "merged" = "open",
+    ): ThreadPullRequestLink => ({
+      host: "github.com",
+      repository: "owner/repo",
+      number,
+      url: `https://github.com/owner/repo/pull/${number}`,
+      source: "created",
+      linkedAt: "2026-03-09T10:00:00.000Z",
+      snapshot: {
+        state,
+        title: "Change",
+        headBranch: "feature",
+        baseBranch: "main",
+        isDraft: false,
+        updatedAt: null,
+        syncedAt: "2026-03-09T10:00:00.000Z",
+        aiReview,
+      },
+      stack: null,
+    });
+    const idle = { ...baseThread, runtime: null, interactionMode: "default" as const };
+    const reviewed = review(bot("Greptile", "reviewed", 2));
+
+    expect(
+      resolveThreadStatusPill({
+        thread: {
+          ...idle,
+          pullRequests: [link(1, reviewed), link(2, review(bot("CodeRabbit", "reviewing")))],
+        },
+      }),
+    ).toMatchObject({
+      label: "Reviewing",
+      tooltip: "Greptile: 2 comments · CodeRabbit: reviewing",
+    });
+    expect(
+      resolveThreadStatusPill({
+        thread: {
+          ...idle,
+          lastVisitedAt: "2026-03-09T10:01:00.000Z",
+          pullRequests: [link(1, reviewed)],
+        },
+      }),
+    ).toMatchObject({ label: "Reviewed", tooltip: "Greptile: 2 comments" });
+    expect(
+      resolveThreadStatusPill({
+        thread: {
+          ...idle,
+          lastVisitedAt: "2026-03-09T10:06:00.000Z",
+          pullRequests: [link(1, reviewed)],
+        },
+      }),
+    ).toBeNull();
+    expect(
+      resolveThreadStatusPill({ thread: { ...idle, pullRequests: [link(1, reviewed, "merged")] } }),
+    ).toBeNull();
+    expect(
+      resolveThreadStatusPill({ thread: { ...baseThread, pullRequests: [link(1, reviewed)] } }),
+    ).toMatchObject({ label: "Working" });
   });
 
   it("shows awaiting input when plan mode is blocked on user answers", () => {

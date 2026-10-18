@@ -8,6 +8,7 @@ import {
   pullRequestLookup,
   toPullRequestSummary,
   toPullRequestWatchFingerprint,
+  toPullRequestReviewSignals,
   decodePullRequestDetailJson,
   decodePullRequestFilesJson,
   decodePullRequestStacksJson,
@@ -34,6 +35,7 @@ import {
   PullRequestCore,
   PullRequestFilesViewed,
   PullRequestNodeId,
+  PullRequestReviewBots,
   ReviewerCandidates,
   ViewerPermissions,
 } from "./pullRequestReads.graphql.ts";
@@ -2351,5 +2353,126 @@ describe("pull request watch fingerprints", () => {
     expect(summaryEdited.remarks).not.toBe(before.remarks);
     expect(summaryEdited.status).toBe(before.status);
     expect(replied.remarks).not.toBe(before.remarks);
+  });
+});
+
+describe("pull request review bot signals", () => {
+  const read = through(PullRequestReviewBots.result, (result) => {
+    const pullRequest = result.repository?.pullRequest;
+    return pullRequest == null ? null : toPullRequestReviewSignals(pullRequest);
+  });
+
+  it("names who posted each check and drops the [bot] suffix from logins", () => {
+    const signals = read(
+      JSON.stringify({
+        data: {
+          repository: {
+            pullRequest: {
+              headRefOid: "abc",
+              commits: {
+                nodes: [
+                  {
+                    commit: {
+                      statusCheckRollup: {
+                        contexts: {
+                          nodes: [
+                            {
+                              __typename: "CheckRun",
+                              name: "Greptile Review",
+                              title: null,
+                              status: "IN_PROGRESS",
+                              conclusion: null,
+                              startedAt: "2026-10-02T11:55:00Z",
+                              completedAt: null,
+                              checkSuite: {
+                                app: { slug: "greptile-apps", logoUrl: "https://logo/greptile" },
+                              },
+                            },
+                            {
+                              __typename: "StatusContext",
+                              context: "CodeRabbit",
+                              state: "SUCCESS",
+                              description: "Review completed",
+                              createdAt: "2026-10-02T11:58:00Z",
+                              creator: {
+                                __typename: "Bot",
+                                login: "coderabbitai[bot]",
+                                avatarUrl: "https://avatar/coderabbit",
+                              },
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                ],
+              },
+              reviewRequests: {
+                nodes: [
+                  {
+                    requestedReviewer: {
+                      __typename: "Bot",
+                      login: "copilot-pull-request-reviewer",
+                      avatarUrl: "https://avatar/copilot",
+                    },
+                  },
+                ],
+              },
+              reviews: { nodes: [] },
+              reviewThreads: {
+                nodes: [
+                  {
+                    isResolved: false,
+                    isOutdated: false,
+                    comments: { nodes: [{ author: { __typename: "Bot", login: "coderabbitai" } }] },
+                  },
+                  {
+                    isResolved: true,
+                    isOutdated: false,
+                    comments: { nodes: [{ author: { __typename: "Bot", login: "coderabbitai" } }] },
+                  },
+                ],
+              },
+              reactionGroups: [
+                {
+                  content: "EYES",
+                  reactors: { nodes: [{ __typename: "Bot", login: "greptile-apps" }] },
+                },
+              ],
+              comments: { nodes: [] },
+            },
+          },
+        },
+      }),
+    );
+    expect(Result.isSuccess(signals)).toBe(true);
+    if (!Result.isSuccess(signals)) return;
+    expect(signals.success.checks).toEqual([
+      {
+        name: "Greptile Review",
+        actor: "greptile-apps",
+        avatarUrl: "https://logo/greptile",
+        status: "pending",
+        conclusion: null,
+        description: null,
+        startedAt: "2026-10-02T11:55:00Z",
+        completedAt: null,
+      },
+      {
+        name: "CodeRabbit",
+        actor: "coderabbitai",
+        avatarUrl: "https://avatar/coderabbit",
+        status: "completed",
+        conclusion: "success",
+        description: "Review completed",
+        startedAt: null,
+        completedAt: "2026-10-02T11:58:00Z",
+      },
+    ]);
+    expect(signals.success.requestedReviewers).toEqual([
+      { login: "copilot-pull-request-reviewer", avatarUrl: "https://avatar/copilot" },
+    ]);
+    expect(signals.success.openThreadAuthors).toEqual(["coderabbitai"]);
+    expect(signals.success.reactions).toEqual([{ content: "eyes", logins: ["greptile-apps"] }]);
   });
 });

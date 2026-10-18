@@ -4,7 +4,7 @@ import * as Schema from "effect/Schema"
 import * as Shared from "../../schema/github.graphql.ts"
 
 /** Represents an individual commit status context */
-export const StatusContext = Schema.Struct({
+export const CheckContextStatusContext = Schema.Struct({
   __typename: Schema.Literal("StatusContext"),
   /** The name of this status context. */
   context: Schema.String,
@@ -19,7 +19,7 @@ export const StatusContext = Schema.Struct({
   /** Whether this is required to pass before merging for a specific pull request. */
   isRequired: Schema.optionalKey(Schema.Boolean)
 })
-export interface StatusContext extends Schema.Struct.Type<typeof StatusContext.fields> {}
+export interface CheckContextStatusContext extends Schema.Struct.Type<typeof CheckContextStatusContext.fields> {}
 
 /** A workflow contains meta information about an Actions workflow file. */
 export const Workflow = Schema.Struct({
@@ -36,14 +36,14 @@ export const WorkflowRun = Schema.Struct({
 export interface WorkflowRun extends Schema.Struct.Type<typeof WorkflowRun.fields> {}
 
 /** A check suite. */
-export const CheckSuite = Schema.Struct({
+export const CheckContextCheckSuiteCheckSuite = Schema.Struct({
   /** The workflow run associated with this check suite. */
   workflowRun: Schema.NullOr(WorkflowRun)
 })
-export interface CheckSuite extends Schema.Struct.Type<typeof CheckSuite.fields> {}
+export interface CheckContextCheckSuiteCheckSuite extends Schema.Struct.Type<typeof CheckContextCheckSuiteCheckSuite.fields> {}
 
 /** A check run. */
-export const CheckRun = Schema.Struct({
+export const CheckContextCheckRun = Schema.Struct({
   __typename: Schema.Literal("CheckRun"),
   /** The name of the check for this check run. */
   name: Schema.String,
@@ -60,9 +60,9 @@ export const CheckRun = Schema.Struct({
   /** Whether this is required to pass before merging for a specific pull request. */
   isRequired: Schema.optionalKey(Schema.Boolean),
   /** The check suite that this run is a part of. */
-  checkSuite: CheckSuite
+  checkSuite: CheckContextCheckSuiteCheckSuite
 })
-export interface CheckRun extends Schema.Struct.Type<typeof CheckRun.fields> {}
+export interface CheckContextCheckRun extends Schema.Struct.Type<typeof CheckContextCheckRun.fields> {}
 
 /** Types that can be inside a StatusCheckRollup context. */
 export const StatusCheckRollupContextOther = Schema.Struct({
@@ -76,8 +76,8 @@ export interface StatusCheckRollupContextOther extends Schema.Struct.Type<typeof
  * Types that can be inside a StatusCheckRollup context.
  */
 export const CheckContext = Schema.Union([
-  StatusContext,
-  CheckRun,
+  CheckContextStatusContext,
+  CheckContextCheckRun,
   StatusCheckRollupContextOther
 ])
 export type CheckContext = typeof CheckContext.Type
@@ -241,10 +241,10 @@ export const Team = Schema.Struct({
 export interface Team extends Schema.Struct.Type<typeof Team.fields> {}
 
 /** Types that can be requested reviewers. */
-export const RequestedReviewerOther = Schema.Struct({
+export const PullRequestCoreRepositoryPullRequestReviewRequestsNodesRequestedReviewerRequestedReviewerOther = Schema.Struct({
   __typename: GraphQL.otherTypename<Shared.Typename.RequestedReviewer>()(["User", "Bot", "Team"])
 })
-export interface RequestedReviewerOther extends Schema.Struct.Type<typeof RequestedReviewerOther.fields> {}
+export interface PullRequestCoreRepositoryPullRequestReviewRequestsNodesRequestedReviewerRequestedReviewerOther extends Schema.Struct.Type<typeof PullRequestCoreRepositoryPullRequestReviewRequestsNodesRequestedReviewerRequestedReviewerOther.fields> {}
 
 /** A request for a user to review a pull request. */
 export const PullRequestCoreRepositoryPullRequestReviewRequestsNodesReviewRequest = Schema.Struct({
@@ -253,7 +253,7 @@ export const PullRequestCoreRepositoryPullRequestReviewRequestsNodesReviewReques
     RequestedReviewerUser,
     RequestedReviewerBot,
     Team,
-    RequestedReviewerOther
+    PullRequestCoreRepositoryPullRequestReviewRequestsNodesRequestedReviewerRequestedReviewerOther
   ]))
 })
 export interface PullRequestCoreRepositoryPullRequestReviewRequestsNodesReviewRequest extends Schema.Struct.Type<typeof PullRequestCoreRepositoryPullRequestReviewRequestsNodesReviewRequest.fields> {}
@@ -668,7 +668,7 @@ export const PullRequestActivityRepositoryPullRequestCommitsPullRequestCommitCon
 export interface PullRequestActivityRepositoryPullRequestCommitsPullRequestCommitConnection extends Schema.Struct.Type<typeof PullRequestActivityRepositoryPullRequestCommitsPullRequestCommitConnection.fields> {}
 
 /** Represents a comment on an Issue. */
-export const NodesIssueComment = Schema.Struct({
+export const PullRequestActivityRepositoryPullRequestCommentsNodesIssueComment = Schema.Struct({
   /** The Node ID of the IssueComment object */
   id: Shared.ID,
   /** The body as Markdown. */
@@ -685,19 +685,19 @@ export const NodesIssueComment = Schema.Struct({
     ActorOther
   ]))
 })
-export interface NodesIssueComment extends Schema.Struct.Type<typeof NodesIssueComment.fields> {}
+export interface PullRequestActivityRepositoryPullRequestCommentsNodesIssueComment extends Schema.Struct.Type<typeof PullRequestActivityRepositoryPullRequestCommentsNodesIssueComment.fields> {}
 
 /** The connection type for IssueComment. */
-export const IssueCommentConnection = Schema.Struct({
+export const PullRequestActivityRepositoryPullRequestCommentsIssueCommentConnection = Schema.Struct({
   /** Information to aid in pagination. */
   pageInfo: PullRequestCheckContextsRepositoryPullRequestCommitsNodesCommitStatusCheckRollupContextsPageInfoPageInfo,
   /** A list of nodes. */
-  nodes: Schema.NullOr(Schema.Array(Schema.NullOr(NodesIssueComment)))
+  nodes: Schema.NullOr(Schema.Array(Schema.NullOr(PullRequestActivityRepositoryPullRequestCommentsNodesIssueComment)))
 })
-export interface IssueCommentConnection extends Schema.Struct.Type<typeof IssueCommentConnection.fields> {}
+export interface PullRequestActivityRepositoryPullRequestCommentsIssueCommentConnection extends Schema.Struct.Type<typeof PullRequestActivityRepositoryPullRequestCommentsIssueCommentConnection.fields> {}
 
 /** A review object for a given pull request. */
-export const NodesPullRequestReview = Schema.Struct({
+export const PullRequestActivityRepositoryPullRequestReviewsNodesPullRequestReview = Schema.Struct({
   /** The Node ID of the PullRequestReview object */
   id: Shared.ID,
   /** Identifies the pull request review body. */
@@ -716,16 +716,16 @@ export const NodesPullRequestReview = Schema.Struct({
     ActorOther
   ]))
 })
-export interface NodesPullRequestReview extends Schema.Struct.Type<typeof NodesPullRequestReview.fields> {}
+export interface PullRequestActivityRepositoryPullRequestReviewsNodesPullRequestReview extends Schema.Struct.Type<typeof PullRequestActivityRepositoryPullRequestReviewsNodesPullRequestReview.fields> {}
 
 /** The connection type for PullRequestReview. */
-export const PullRequestReviewConnection = Schema.Struct({
+export const PullRequestActivityRepositoryPullRequestReviewsPullRequestReviewConnection = Schema.Struct({
   /** Information to aid in pagination. */
   pageInfo: PullRequestCheckContextsRepositoryPullRequestCommitsNodesCommitStatusCheckRollupContextsPageInfoPageInfo,
   /** A list of nodes. */
-  nodes: Schema.NullOr(Schema.Array(Schema.NullOr(NodesPullRequestReview)))
+  nodes: Schema.NullOr(Schema.Array(Schema.NullOr(PullRequestActivityRepositoryPullRequestReviewsNodesPullRequestReview)))
 })
-export interface PullRequestReviewConnection extends Schema.Struct.Type<typeof PullRequestReviewConnection.fields> {}
+export interface PullRequestActivityRepositoryPullRequestReviewsPullRequestReviewConnection extends Schema.Struct.Type<typeof PullRequestActivityRepositoryPullRequestReviewsPullRequestReviewConnection.fields> {}
 
 /** A repository pull request. */
 export const PullRequestActivityRepositoryPullRequestPullRequest = Schema.Struct({
@@ -737,9 +737,9 @@ export const PullRequestActivityRepositoryPullRequestPullRequest = Schema.Struct
   /** A list of commits present in this pull request's head branch not present in the base branch. */
   commits: Schema.optionalKey(PullRequestActivityRepositoryPullRequestCommitsPullRequestCommitConnection),
   /** A list of comments associated with the pull request. */
-  comments: Schema.optionalKey(IssueCommentConnection),
+  comments: Schema.optionalKey(PullRequestActivityRepositoryPullRequestCommentsIssueCommentConnection),
   /** A list of reviews associated with the pull request. */
-  reviews: Schema.optionalKey(Schema.NullOr(PullRequestReviewConnection))
+  reviews: Schema.optionalKey(Schema.NullOr(PullRequestActivityRepositoryPullRequestReviewsPullRequestReviewConnection))
 })
 export interface PullRequestActivityRepositoryPullRequestPullRequest extends Schema.Struct.Type<typeof PullRequestActivityRepositoryPullRequestPullRequest.fields> {}
 
@@ -903,14 +903,14 @@ export const NodeIssueComment = Schema.Struct({
 export interface NodeIssueComment extends Schema.Struct.Type<typeof NodeIssueComment.fields> {}
 
 /** A review comment associated with a given repository pull request. */
-export const PullRequestReviewComment = Schema.Struct({
+export const NodePullRequestReviewComment = Schema.Struct({
   __typename: Schema.Literal("PullRequestReviewComment"),
   /** The Node ID of the PullRequestReviewComment object */
   id: Shared.ID,
   /** The pull request associated with this review comment. */
   reviewCommentPullRequest: PullRequestNodeIdRepositoryPullRequestPullRequest
 })
-export interface PullRequestReviewComment extends Schema.Struct.Type<typeof PullRequestReviewComment.fields> {}
+export interface NodePullRequestReviewComment extends Schema.Struct.Type<typeof NodePullRequestReviewComment.fields> {}
 
 /** A review object for a given pull request. */
 export const NodePullRequestReview = Schema.Struct({
@@ -957,7 +957,7 @@ export const PullRequestSubject = GraphQL.query("PullRequestSubject", {
     /** Fetches an object given its ID. */
     node: Schema.NullOr(Schema.Union([
       NodeIssueComment,
-      PullRequestReviewComment,
+      NodePullRequestReviewComment,
       NodePullRequestReview,
       PullRequestSubjectNodeNodeOther
     ]))
@@ -1050,12 +1050,12 @@ export const UserConnection = Schema.Struct({
 export interface UserConnection extends Schema.Struct.Type<typeof UserConnection.fields> {}
 
 /** Represents an object which can take actions on GitHub. Typically a User or Bot. */
-export const Actor = Schema.Struct({
+export const AuthorActor = Schema.Struct({
   __typename: GraphQL.otherTypename<Shared.Typename.Actor>()([]),
   /** The username of the actor. */
   login: Schema.String
 })
-export interface Actor extends Schema.Struct.Type<typeof Actor.fields> {}
+export interface AuthorActor extends Schema.Struct.Type<typeof AuthorActor.fields> {}
 
 /** A request for a user to review a pull request. */
 export const ReviewerCandidatesRepositoryPullRequestReviewRequestsNodesReviewRequest = Schema.Struct({
@@ -1064,7 +1064,7 @@ export const ReviewerCandidatesRepositoryPullRequestReviewRequestsNodesReviewReq
     PullRequestPreviewRepositoryPullRequestAuthorUser,
     Team,
     NodesBot,
-    RequestedReviewerOther
+    PullRequestCoreRepositoryPullRequestReviewRequestsNodesRequestedReviewerRequestedReviewerOther
   ]))
 })
 export interface ReviewerCandidatesRepositoryPullRequestReviewRequestsNodesReviewRequest extends Schema.Struct.Type<typeof ReviewerCandidatesRepositoryPullRequestReviewRequestsNodesReviewRequest.fields> {}
@@ -1079,7 +1079,7 @@ export interface ReviewerCandidatesRepositoryPullRequestReviewRequestsReviewRequ
 /** A repository pull request. */
 export const ReviewerCandidatesRepositoryPullRequestPullRequest = Schema.Struct({
   /** The actor who authored the comment. */
-  author: Schema.NullOr(Actor),
+  author: Schema.NullOr(AuthorActor),
   /** A list of review requests associated with the pull request. */
   reviewRequests: Schema.NullOr(ReviewerCandidatesRepositoryPullRequestReviewRequestsReviewRequestConnection)
 })
@@ -1486,5 +1486,297 @@ export declare namespace PullRequestSourceBranch {
   export type Result = typeof PullRequestSourceBranch.result.Type
 }
 
+/** A GitHub App. */
+export const App = Schema.Struct({
+  /** A slug based on the name of the app for use in URLs. */
+  slug: Schema.String,
+  /** A URL pointing to the app's logo. */
+  logoUrl: Shared.URI
+})
+export interface App extends Schema.Struct.Type<typeof App.fields> {}
+
+/** A check suite. */
+export const NodesCheckSuiteCheckSuite = Schema.Struct({
+  /** The GitHub App which created this check suite. */
+  app: Schema.NullOr(App)
+})
+export interface NodesCheckSuiteCheckSuite extends Schema.Struct.Type<typeof NodesCheckSuiteCheckSuite.fields> {}
+
+/** A check run. */
+export const NodesCheckRun = Schema.Struct({
+  __typename: Schema.Literal("CheckRun"),
+  /** The name of the check for this check run. */
+  name: Schema.String,
+  /** A string representing the check run */
+  title: Schema.NullOr(Schema.String),
+  /** The current status of the check run. */
+  status: GraphQL.enumLiterals(Shared.CheckStatusState.literals),
+  /** The conclusion of the check run. */
+  conclusion: Schema.NullOr(GraphQL.enumLiterals(Shared.CheckConclusionState.literals)),
+  /** Identifies the date and time when the check run was started. */
+  startedAt: Schema.NullOr(Shared.DateTime),
+  /** Identifies the date and time when the check run was completed. */
+  completedAt: Schema.NullOr(Shared.DateTime),
+  /** The check suite that this run is a part of. */
+  checkSuite: NodesCheckSuiteCheckSuite
+})
+export interface NodesCheckRun extends Schema.Struct.Type<typeof NodesCheckRun.fields> {}
+
+/** Represents an object which can take actions on GitHub. Typically a User or Bot. */
+export const CreatorActor = Schema.Struct({
+  __typename: GraphQL.otherTypename<Shared.Typename.Actor>()([]),
+  /** The username of the actor. */
+  login: Schema.String,
+  /** A URL pointing to the actor's public avatar. */
+  avatarUrl: Shared.URI
+})
+export interface CreatorActor extends Schema.Struct.Type<typeof CreatorActor.fields> {}
+
+/** Represents an individual commit status context */
+export const NodesStatusContext = Schema.Struct({
+  __typename: Schema.Literal("StatusContext"),
+  /** The name of this status context. */
+  context: Schema.String,
+  /** The state of this status context. */
+  state: GraphQL.enumLiterals(Shared.StatusState.literals),
+  /** The description for this status context. */
+  description: Schema.NullOr(Schema.String),
+  /** Identifies the date and time when the object was created. */
+  createdAt: Shared.DateTime,
+  /** The actor who created this status context. */
+  creator: Schema.NullOr(CreatorActor)
+})
+export interface NodesStatusContext extends Schema.Struct.Type<typeof NodesStatusContext.fields> {}
+
+/** The connection type for StatusCheckRollupContext. */
+export const PullRequestReviewBotsRepositoryPullRequestCommitsNodesCommitStatusCheckRollupContextsStatusCheckRollupContextConnection = Schema.Struct({
+  /** A list of nodes. */
+  nodes: Schema.NullOr(Schema.Array(Schema.NullOr(Schema.Union([
+    NodesCheckRun,
+    NodesStatusContext,
+    StatusCheckRollupContextOther
+  ]))))
+})
+export interface PullRequestReviewBotsRepositoryPullRequestCommitsNodesCommitStatusCheckRollupContextsStatusCheckRollupContextConnection extends Schema.Struct.Type<typeof PullRequestReviewBotsRepositoryPullRequestCommitsNodesCommitStatusCheckRollupContextsStatusCheckRollupContextConnection.fields> {}
+
+/** Represents the rollup for both the check runs and status for a commit. */
+export const PullRequestReviewBotsRepositoryPullRequestCommitsNodesCommitStatusCheckRollupStatusCheckRollup = Schema.Struct({
+  /** A list of status contexts and check runs for this commit. */
+  contexts: PullRequestReviewBotsRepositoryPullRequestCommitsNodesCommitStatusCheckRollupContextsStatusCheckRollupContextConnection
+})
+export interface PullRequestReviewBotsRepositoryPullRequestCommitsNodesCommitStatusCheckRollupStatusCheckRollup extends Schema.Struct.Type<typeof PullRequestReviewBotsRepositoryPullRequestCommitsNodesCommitStatusCheckRollupStatusCheckRollup.fields> {}
+
+/** Represents a Git commit. */
+export const PullRequestReviewBotsRepositoryPullRequestCommitsNodesCommitCommit = Schema.Struct({
+  /** Check and Status rollup information for this commit. */
+  statusCheckRollup: Schema.NullOr(PullRequestReviewBotsRepositoryPullRequestCommitsNodesCommitStatusCheckRollupStatusCheckRollup)
+})
+export interface PullRequestReviewBotsRepositoryPullRequestCommitsNodesCommitCommit extends Schema.Struct.Type<typeof PullRequestReviewBotsRepositoryPullRequestCommitsNodesCommitCommit.fields> {}
+
+/** Represents a Git commit part of a pull request. */
+export const PullRequestReviewBotsRepositoryPullRequestCommitsNodesPullRequestCommit = Schema.Struct({
+  /** The Git commit object */
+  commit: PullRequestReviewBotsRepositoryPullRequestCommitsNodesCommitCommit
+})
+export interface PullRequestReviewBotsRepositoryPullRequestCommitsNodesPullRequestCommit extends Schema.Struct.Type<typeof PullRequestReviewBotsRepositoryPullRequestCommitsNodesPullRequestCommit.fields> {}
+
+/** The connection type for PullRequestCommit. */
+export const PullRequestReviewBotsRepositoryPullRequestCommitsPullRequestCommitConnection = Schema.Struct({
+  /** A list of nodes. */
+  nodes: Schema.NullOr(Schema.Array(Schema.NullOr(PullRequestReviewBotsRepositoryPullRequestCommitsNodesPullRequestCommit)))
+})
+export interface PullRequestReviewBotsRepositoryPullRequestCommitsPullRequestCommitConnection extends Schema.Struct.Type<typeof PullRequestReviewBotsRepositoryPullRequestCommitsPullRequestCommitConnection.fields> {}
+
+/** Types that can be requested reviewers. */
+export const PullRequestReviewBotsRepositoryPullRequestReviewRequestsNodesRequestedReviewerRequestedReviewerOther = Schema.Struct({
+  __typename: GraphQL.otherTypename<Shared.Typename.RequestedReviewer>()(["Bot", "User"])
+})
+export interface PullRequestReviewBotsRepositoryPullRequestReviewRequestsNodesRequestedReviewerRequestedReviewerOther extends Schema.Struct.Type<typeof PullRequestReviewBotsRepositoryPullRequestReviewRequestsNodesRequestedReviewerRequestedReviewerOther.fields> {}
+
+/** A request for a user to review a pull request. */
+export const PullRequestReviewBotsRepositoryPullRequestReviewRequestsNodesReviewRequest = Schema.Struct({
+  /** The reviewer that is requested. */
+  requestedReviewer: Schema.NullOr(Schema.Union([
+    NodesBot,
+    ActorAvatarsNodesUser,
+    PullRequestReviewBotsRepositoryPullRequestReviewRequestsNodesRequestedReviewerRequestedReviewerOther
+  ]))
+})
+export interface PullRequestReviewBotsRepositoryPullRequestReviewRequestsNodesReviewRequest extends Schema.Struct.Type<typeof PullRequestReviewBotsRepositoryPullRequestReviewRequestsNodesReviewRequest.fields> {}
+
+/** The connection type for ReviewRequest. */
+export const PullRequestReviewBotsRepositoryPullRequestReviewRequestsReviewRequestConnection = Schema.Struct({
+  /** A list of nodes. */
+  nodes: Schema.NullOr(Schema.Array(Schema.NullOr(PullRequestReviewBotsRepositoryPullRequestReviewRequestsNodesReviewRequest)))
+})
+export interface PullRequestReviewBotsRepositoryPullRequestReviewRequestsReviewRequestConnection extends Schema.Struct.Type<typeof PullRequestReviewBotsRepositoryPullRequestReviewRequestsReviewRequestConnection.fields> {}
+
+/** Represents a Git commit. */
+export const ReviewsNodesCommitCommit = Schema.Struct({
+  /** The Git object ID */
+  oid: Shared.GitObjectID
+})
+export interface ReviewsNodesCommitCommit extends Schema.Struct.Type<typeof ReviewsNodesCommitCommit.fields> {}
+
+/** A review object for a given pull request. */
+export const PullRequestReviewBotsRepositoryPullRequestReviewsNodesPullRequestReview = Schema.Struct({
+  /** Identifies the current state of the pull request review. */
+  state: GraphQL.enumLiterals(Shared.PullRequestReviewState.literals),
+  /** Identifies when the Pull Request Review was submitted */
+  submittedAt: Schema.NullOr(Shared.DateTime),
+  /** Identifies the commit associated with this pull request review. */
+  commit: Schema.NullOr(ReviewsNodesCommitCommit),
+  /** The actor who authored the comment. */
+  author: Schema.NullOr(CreatorActor)
+})
+export interface PullRequestReviewBotsRepositoryPullRequestReviewsNodesPullRequestReview extends Schema.Struct.Type<typeof PullRequestReviewBotsRepositoryPullRequestReviewsNodesPullRequestReview.fields> {}
+
+/** The connection type for PullRequestReview. */
+export const PullRequestReviewBotsRepositoryPullRequestReviewsPullRequestReviewConnection = Schema.Struct({
+  /** A list of nodes. */
+  nodes: Schema.NullOr(Schema.Array(Schema.NullOr(PullRequestReviewBotsRepositoryPullRequestReviewsNodesPullRequestReview)))
+})
+export interface PullRequestReviewBotsRepositoryPullRequestReviewsPullRequestReviewConnection extends Schema.Struct.Type<typeof PullRequestReviewBotsRepositoryPullRequestReviewsPullRequestReviewConnection.fields> {}
+
+/** A review comment associated with a given repository pull request. */
+export const NodesPullRequestReviewComment = Schema.Struct({
+  /** The actor who authored the comment. */
+  author: Schema.NullOr(AuthorActor)
+})
+export interface NodesPullRequestReviewComment extends Schema.Struct.Type<typeof NodesPullRequestReviewComment.fields> {}
+
+/** The connection type for PullRequestReviewComment. */
+export const PullRequestReviewCommentConnection = Schema.Struct({
+  /** A list of nodes. */
+  nodes: Schema.NullOr(Schema.Array(Schema.NullOr(NodesPullRequestReviewComment)))
+})
+export interface PullRequestReviewCommentConnection extends Schema.Struct.Type<typeof PullRequestReviewCommentConnection.fields> {}
+
+/** A threaded list of comments for a given pull request. */
+export const PullRequestReviewThread = Schema.Struct({
+  /** Whether this thread has been resolved */
+  isResolved: Schema.Boolean,
+  /** Indicates whether this thread was outdated by newer changes. */
+  isOutdated: Schema.Boolean,
+  /** A list of pull request comments associated with the thread. */
+  comments: PullRequestReviewCommentConnection
+})
+export interface PullRequestReviewThread extends Schema.Struct.Type<typeof PullRequestReviewThread.fields> {}
+
+/** Review comment threads for a pull request review. */
+export const PullRequestReviewThreadConnection = Schema.Struct({
+  /** A list of nodes. */
+  nodes: Schema.NullOr(Schema.Array(Schema.NullOr(PullRequestReviewThread)))
+})
+export interface PullRequestReviewThreadConnection extends Schema.Struct.Type<typeof PullRequestReviewThreadConnection.fields> {}
+
+/** A user is an individual's account on GitHub that owns repositories and can make new content. */
+export const ReactorsNodesUser = Schema.Struct({
+  __typename: Schema.Literal("User"),
+  /** The username used to login. */
+  login: Schema.String
+})
+export interface ReactorsNodesUser extends Schema.Struct.Type<typeof ReactorsNodesUser.fields> {}
+
+/** Types that can be assigned to reactions. */
+export const ReactorOther = Schema.Struct({
+  __typename: GraphQL.otherTypename<Shared.Typename.Reactor>()(["Bot", "User"])
+})
+export interface ReactorOther extends Schema.Struct.Type<typeof ReactorOther.fields> {}
+
+/** The connection type for Reactor. */
+export const ReactorConnection = Schema.Struct({
+  /** A list of nodes. */
+  nodes: Schema.NullOr(Schema.Array(Schema.NullOr(Schema.Union([
+    RequestedReviewerBot,
+    ReactorsNodesUser,
+    ReactorOther
+  ]))))
+})
+export interface ReactorConnection extends Schema.Struct.Type<typeof ReactorConnection.fields> {}
+
+/** A group of emoji reactions to a particular piece of content. */
+export const ReactionGroup = Schema.Struct({
+  /** Identifies the emoji reaction. */
+  content: GraphQL.enumLiterals(Shared.ReactionContent.literals),
+  /** Reactors to the reaction subject with the emotion represented by this reaction group. */
+  reactors: ReactorConnection
+})
+export interface ReactionGroup extends Schema.Struct.Type<typeof ReactionGroup.fields> {}
+
+/** Represents a comment on an Issue. */
+export const PullRequestReviewBotsRepositoryPullRequestCommentsNodesIssueComment = Schema.Struct({
+  /** The body as Markdown. */
+  body: Schema.String,
+  /** Identifies the date and time when the object was created. */
+  createdAt: Shared.DateTime,
+  /** The moment the editor made the last edit */
+  lastEditedAt: Schema.NullOr(Shared.DateTime),
+  /** The actor who authored the comment. */
+  author: Schema.NullOr(CreatorActor)
+})
+export interface PullRequestReviewBotsRepositoryPullRequestCommentsNodesIssueComment extends Schema.Struct.Type<typeof PullRequestReviewBotsRepositoryPullRequestCommentsNodesIssueComment.fields> {}
+
+/** The connection type for IssueComment. */
+export const PullRequestReviewBotsRepositoryPullRequestCommentsIssueCommentConnection = Schema.Struct({
+  /** A list of nodes. */
+  nodes: Schema.NullOr(Schema.Array(Schema.NullOr(PullRequestReviewBotsRepositoryPullRequestCommentsNodesIssueComment)))
+})
+export interface PullRequestReviewBotsRepositoryPullRequestCommentsIssueCommentConnection extends Schema.Struct.Type<typeof PullRequestReviewBotsRepositoryPullRequestCommentsIssueCommentConnection.fields> {}
+
+/** A repository pull request. */
+export const PullRequestReviewBotsRepositoryPullRequestPullRequest = Schema.Struct({
+  /** Identifies the oid of the head ref associated with the pull request, even if the ref has been deleted. */
+  headRefOid: Shared.GitObjectID,
+  /** A list of commits present in this pull request's head branch not present in the base branch. */
+  commits: PullRequestReviewBotsRepositoryPullRequestCommitsPullRequestCommitConnection,
+  /** A list of review requests associated with the pull request. */
+  reviewRequests: Schema.NullOr(PullRequestReviewBotsRepositoryPullRequestReviewRequestsReviewRequestConnection),
+  /** A list of reviews associated with the pull request. */
+  reviews: Schema.NullOr(PullRequestReviewBotsRepositoryPullRequestReviewsPullRequestReviewConnection),
+  /** The list of all review threads for this pull request. */
+  reviewThreads: PullRequestReviewThreadConnection,
+  /** A list of reactions grouped by content left on the subject. */
+  reactionGroups: Schema.NullOr(Schema.Array(ReactionGroup)),
+  /** A list of comments associated with the pull request. */
+  comments: PullRequestReviewBotsRepositoryPullRequestCommentsIssueCommentConnection
+})
+export interface PullRequestReviewBotsRepositoryPullRequestPullRequest extends Schema.Struct.Type<typeof PullRequestReviewBotsRepositoryPullRequestPullRequest.fields> {}
+
+/** A repository contains the content for a project. */
+export const PullRequestReviewBotsRepositoryRepository = Schema.Struct({
+  /** Returns a single pull request from the current repository by number. */
+  pullRequest: Schema.NullOr(PullRequestReviewBotsRepositoryPullRequestPullRequest)
+})
+export interface PullRequestReviewBotsRepositoryRepository extends Schema.Struct.Type<typeof PullRequestReviewBotsRepositoryRepository.fields> {}
+
+/** `query PullRequestReviewBots` */
+export const PullRequestReviewBots = GraphQL.query("PullRequestReviewBots", {
+  document: {
+    variables: [
+      { name: "owner", body: "String!" },
+      { name: "name", body: "String!" },
+      { name: "number", body: "Int!" }
+    ],
+    selections: [
+      { name: "repository", body: ["(owner:$", "owner", " name:$", "name", "){pullRequest(number:$", "number", "){headRefOid commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename...on CheckRun{name title status conclusion startedAt completedAt checkSuite{app{slug logoUrl(size:64)}}}...on StatusContext{context state description createdAt creator{__typename login avatarUrl(size:64)}}}}}}}}reviewRequests(first:50){nodes{requestedReviewer{__typename...on Bot{login avatarUrl(size:64)}...on User{login avatarUrl(size:64)}}}}reviews(last:50){nodes{state submittedAt commit{oid}author{__typename login avatarUrl(size:64)}}}reviewThreads(last:100){nodes{isResolved isOutdated comments(first:1){nodes{author{__typename login}}}}}reactionGroups{content reactors(first:20){nodes{__typename...on Bot{login}...on User{login}}}}comments(last:30){nodes{body createdAt lastEditedAt author{__typename login avatarUrl(size:64)}}}}}"] }
+    ],
+    fragments: []
+  },
+  variables: {
+    owner: Schema.String,
+    name: Schema.String,
+    number: Shared.Int
+  },
+  result: Schema.Struct({
+    /** Lookup a given repository by the owner and repository name. */
+    repository: Schema.NullOr(PullRequestReviewBotsRepositoryRepository)
+  })
+})
+export declare namespace PullRequestReviewBots {
+  export type Variables = typeof PullRequestReviewBots.variables.Type
+  export type Result = typeof PullRequestReviewBots.result.Type
+}
+
 /** Every operation in pullRequestReads.graphql. */
-export const PullRequestReadsGraphQLGroup = GraphQLGroup.make(ActorAvatars, PullRequestCore, PullRequestCheckContexts, PullRequestPreview, PullRequestActivity, PullRequestHeads, PullRequestNodeId, PullRequestSubject, ViewerPermissions, ReviewerCandidates, LabelCandidates, PullRequestFilesViewed, PullRequestMergeMessage, PullRequestActionState, PullRequestBranchToDelete, PullRequestSourceBranch)
+export const PullRequestReadsGraphQLGroup = GraphQLGroup.make(ActorAvatars, PullRequestCore, PullRequestCheckContexts, PullRequestPreview, PullRequestActivity, PullRequestHeads, PullRequestNodeId, PullRequestSubject, ViewerPermissions, ReviewerCandidates, LabelCandidates, PullRequestFilesViewed, PullRequestMergeMessage, PullRequestActionState, PullRequestBranchToDelete, PullRequestSourceBranch, PullRequestReviewBots)

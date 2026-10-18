@@ -833,7 +833,7 @@ export function ThreadStatusLabel({
             }`}
           />
         </TooltipTrigger>
-        <TooltipPopup side="top">{status.label}</TooltipPopup>
+        <TooltipPopup side="top">{status.tooltip ?? status.label}</TooltipPopup>
       </Tooltip>
     );
   }
@@ -856,7 +856,7 @@ export function ThreadStatusLabel({
         />
         <span className="hidden md:inline">{status.label}</span>
       </TooltipTrigger>
-      <TooltipPopup side="top">{status.label}</TooltipPopup>
+      <TooltipPopup side="top">{status.tooltip ?? status.label}</TooltipPopup>
     </Tooltip>
   );
 }

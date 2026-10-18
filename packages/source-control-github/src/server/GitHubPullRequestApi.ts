@@ -76,6 +76,7 @@ import {
   toPullRequestRows,
   toPullRequestSummary,
   toPullRequestWatchFingerprint,
+  toPullRequestReviewSignals,
   toReviewDismissalsPage,
   toReviewerCandidates,
   toReviewThreadCommentsPage,
@@ -103,6 +104,7 @@ import {
   type GitHubViewerAccess,
 } from "./gitHubPullRequestJson.ts";
 import type {
+  ProviderChangeRequestReviewSignals,
   ProviderChangeRequestSummary,
   ProviderListCursor,
 } from "@t3tools/source-control-core/server/PullRequestProvider";
@@ -466,6 +468,14 @@ export class GitHubPullRequestApi extends Context.Service<
       readonly host: string;
       readonly number: number;
     }) => Effect.Effect<GitHubPullRequestWatchFingerprint | null, GitHubPullRequestApiError>;
+
+    /** Null for a pull request GitHub does not know. */
+    readonly getPullRequestReviewSignals: (input: {
+      readonly cwd: string;
+      readonly repository: string;
+      readonly host: string;
+      readonly number: number;
+    }) => Effect.Effect<ProviderChangeRequestReviewSignals | null, GitHubPullRequestApiError>;
 
     readonly revalidateChecks: Effect.Success<typeof makeChecksRevalidator>;
 
@@ -1635,6 +1645,26 @@ export const make = Effect.gen(function* () {
       );
     };
 
+  const reviewSignalsResolver = GraphQLResolver.aliased(client.PullRequestReviewBots, {
+    batchKey: GitHubGraphQlClient.batchKey,
+  }).pipe(
+    RequestResolver.setDelay(SUMMARY_BATCH_WINDOW),
+    RequestResolver.batchN(STAT_ALIASES_PER_REQUEST),
+  );
+  const getPullRequestReviewSignals: GitHubPullRequestApi["Service"]["getPullRequestReviewSignals"] =
+    (input) => {
+      const lookup = pullRequestLookup(input);
+      if (lookup === null) return Effect.succeed(null);
+      return GraphQLResolver.request(lookup, reviewSignalsResolver).pipe(
+        Effect.map((result) => {
+          const pullRequest = result.repository?.pullRequest;
+          return pullRequest == null ? null : toPullRequestReviewSignals(pullRequest);
+        }),
+        Effect.catchIf(isNotFoundOnly, () => Effect.succeed(null)),
+        (effect) => batchedRead({ ...input, operation: "getPullRequestReviewSignals" }, effect),
+      );
+    };
+
   // Rows already on a page, enriched with what the listing query leaves out. They are many, so
   // their lookups share aliased requests of twenty-five, four at a time.
   const statsResolver = GraphQLResolver.aliased(client.PullRequestStats, {
@@ -1892,6 +1922,7 @@ export const make = Effect.gen(function* () {
 
     getPullRequestSummary,
     getPullRequestWatchFingerprint,
+    getPullRequestReviewSignals,
 
     getPullRequestDetail,
     getPullRequestPreview: (input) => {

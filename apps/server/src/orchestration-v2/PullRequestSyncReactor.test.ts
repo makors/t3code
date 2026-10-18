@@ -32,10 +32,14 @@ import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import { TestClock } from "effect/testing";
 
-import { PullRequestProviderError } from "@t3tools/source-control-core/server/PullRequestProvider";
+import {
+  type ProviderChangeRequestReviewSignals,
+  PullRequestProviderError,
+} from "@t3tools/source-control-core/server/PullRequestProvider";
 import * as GitManager from "../git/GitManager.ts";
 import * as PullRequestService from "../pullRequest/PullRequestService.ts";
 import * as ServerActivation from "../serverActivation.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as PullRequestSyncReactor from "./PullRequestSyncReactor.ts";
@@ -171,6 +175,10 @@ interface HarnessOptions {
   readonly stack?: (
     input: PullRequestRef,
   ) => Effect.Effect<PullRequestStack | null, PullRequestOperationError>;
+  readonly settings?: Parameters<typeof ServerSettings.layerTest>[0];
+  readonly reviewSignals?: (
+    input: PullRequestRef,
+  ) => Effect.Effect<ProviderChangeRequestReviewSignals | null, PullRequestOperationError>;
 }
 
 const makeHarness = Effect.fn("makePullRequestSyncHarness")(function* (options: HarnessOptions) {
@@ -221,6 +229,9 @@ const makeHarness = Effect.fn("makePullRequestSyncHarness")(function* (options: 
       summary,
       stack,
       invalidate: options.invalidate ?? (() => Effect.void),
+      reviewSignals: (input) =>
+        options.reviewSignals?.(input) ??
+        Effect.die(new Error("unexpected pull request review signals read")),
       subscribeStateChanges: Effect.succeed(Stream.fromQueue(stateChanges)),
     }),
     Layer.mock(GitManager.GitManager)({
@@ -263,6 +274,7 @@ const makeHarness = Effect.fn("makePullRequestSyncHarness")(function* (options: 
     }),
     Layer.succeed(ServerActivation.ServerActivation, Deferred.await(activation)),
     Layer.succeed(Crypto.Crypto, testCrypto),
+    ServerSettings.layerTest(options.settings ?? {}),
   );
 
   return {
@@ -1147,6 +1159,108 @@ describe("PullRequestSyncReactor", () => {
             ]),
             [[7, "merged"]],
           );
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
+
+  it.effect("tracks AI reviewers from reviewing to reviewed while the setting is on", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse(NOW));
+        let bugbot: "pending" | "completed" = "pending";
+        let reads = 0;
+        const check = (name: string, actor: string, status: "pending" | "completed") => ({
+          name,
+          actor,
+          avatarUrl: null,
+          status,
+          conclusion: status === "completed" ? "success" : null,
+          description: null,
+          startedAt: "2026-08-28T11:55:00.000Z",
+          completedAt: status === "completed" ? "2026-08-28T11:58:00.000Z" : null,
+        });
+        const fixture = yield* makeHarness({
+          snapshot: makeSnapshot([makeThread("one", { pullRequests: [makeLink(7, {})] })]),
+          settings: { pullRequestAiReviewStatus: true },
+          reviewSignals: () =>
+            Effect.sync(() => {
+              reads += 1;
+              return {
+                headSha: "head",
+                checks: [
+                  check("CodeRabbit", "coderabbitai", "completed"),
+                  check("Cursor Bugbot", "cursor", bugbot),
+                ],
+                requestedReviewers: [],
+                reviews: [],
+                openThreadAuthors: [],
+                reactions: [],
+                comments: [],
+              };
+            }),
+        });
+        yield* Effect.gen(function* () {
+          const reactor = yield* startAndSweep(fixture);
+          const first = yield* Ref.get(fixture.syncCommands);
+          assert.deepStrictEqual(
+            first.at(-1)?.snapshot.aiReview?.reviewers.map(({ name, state }) => [name, state]),
+            [
+              ["CodeRabbit", "reviewed"],
+              ["Cursor Bugbot", "reviewing"],
+            ],
+          );
+          yield* Ref.update(fixture.snapshots, (snapshot) => applySync(snapshot, first));
+
+          // The summary did not move, so a reviewer still at work is re-read on its own cadence.
+          bugbot = "completed";
+          yield* sweepAgain(fixture, reactor);
+          assert.strictEqual(reads, 1);
+          yield* sweepAgain(fixture, reactor);
+          assert.strictEqual(reads, 2);
+          assert.strictEqual(
+            (yield* Ref.get(fixture.syncCommands)).at(-1)?.snapshot.aiReview?.state,
+            "reviewed",
+          );
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
+
+  it.effect("leaves AI review status out while the setting is off", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse(NOW));
+        const fixture = yield* makeHarness({
+          snapshot: makeSnapshot([
+            makeThread("one", {
+              pullRequests: [
+                makeLink(7, {
+                  aiReview: {
+                    state: "reviewed",
+                    reviewers: [
+                      {
+                        name: "Greptile",
+                        avatarUrl: null,
+                        state: "reviewed",
+                        startedAt: null,
+                        completedAt: null,
+                        findings: 0,
+                      },
+                    ],
+                    startedAt: null,
+                    completedAt: null,
+                  },
+                }),
+              ],
+            }),
+          ]),
+        });
+        yield* Effect.gen(function* () {
+          yield* startAndSweep(fixture);
+          const commands = yield* Ref.get(fixture.syncCommands);
+          assert.strictEqual(commands.length, 1);
+          assert.strictEqual(commands[0]?.snapshot.aiReview, undefined);
         }).pipe(Effect.provide(fixture.layer));
       }),
     ),
